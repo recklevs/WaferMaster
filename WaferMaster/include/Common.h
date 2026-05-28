@@ -3,6 +3,7 @@
 #include <QString>
 #include <QMetaType>
 #include <QRect>
+#include <QColor>
 #include <opencv2/opencv.hpp>
 
 // ============================================================================
@@ -49,9 +50,8 @@ struct SourceConfig
 /// @brief 算法参数配置，WaferAlgorithm 初始化时传入
 struct AlgoConfig
 {
-    double fiThreshold       = 18.0;  // FI 平坦度阈值，超出则判定异常
-    double p95Threshold      = 30.0;  // P95 阈值，Hot 区判定用（替代 Project2 中 hotThreshAbs）
-    double hotRatioThreshold = 5.0;   // HotRatio 阈值（Hot区像素占比），超出则判定异常
+    double fiThreshold       = 18.0;  // FI 平坦度判定阈值
+    double hotRatioThreshold = 5.0;   // HotRatio 判定阈值（Hot区像素占比，%），超出则判定异常
     double roiRatioW         = 0.70;  // 算法 ROI 宽度占原图的比例（0~1），中心裁切
     double roiRatioH         = 0.70;  // 算法 ROI 高度占原图的比例（0~1），中心裁切
     double bandPassInnerRatio = 0.02; // 带通滤波器内径比例（相对频谱最大半径），低频截止
@@ -70,7 +70,7 @@ struct AlgoResult
     qint64 timestampMs = 0;           // 时间戳（ms），采集时记录
     double fi          = 0.0;         // FI 平坦度指标
     double p95         = 0.0;         // P95 指标（热区像素强度第95百分位值）
-    double hotRatio    = 0.0;         // HotRatio：热区像素占总像素的比例（0~1）
+    double hotRatio    = 0.0;         // HotRatio：热区像素占总像素的比例（0~100%）
     DetectionLevel level = DetectionLevel::Good; // 检测等级，由 classify() 根据阈值判定
     QRect algoRoiRect;                 // 算法 ROI 矩形区域（注意：不是观察ROI）
     cv::Mat frameOriginal;             // 原始输入帧（clone 后的独立副本）
@@ -82,8 +82,30 @@ struct AlgoResult
 // 工具函数
 // ============================================================================
 
-/// @brief 将检测等级枚举转为可读的中文字符串，供状态栏和CSV使用
-QString detectionLevelToString(DetectionLevel level);
+/// 将检测等级枚举转为可读字符串，供状态栏和CSV使用
+inline QString detectionLevelToString(DetectionLevel level)
+{
+    switch (level)
+    {
+    case DetectionLevel::Good:    return QStringLiteral("Good");
+    case DetectionLevel::Warning: return QStringLiteral("Warning");
+    case DetectionLevel::Ng:      return QStringLiteral("NG");
+    default:                      return QStringLiteral("Unknown");
+    }
+}
+
+/// 根据检测等级返回对应颜色，供状态栏和 ROI 矩形框显示使用
+/// Good=绿色, Warning=橙色, Ng=红色, Unknown=灰色
+inline QColor levelToColor(DetectionLevel level)
+{
+    switch (level)
+    {
+    case DetectionLevel::Good:    return QColor(0, 180, 0);       // 绿色
+    case DetectionLevel::Warning: return QColor(255, 180, 0);     // 橙色
+    case DetectionLevel::Ng:      return QColor(220, 30, 30);     // 红色
+    default:                      return QColor(128, 128, 128);   // 灰色
+    }
+}
 
 // ============================================================================
 // Qt 元类型注册声明（跨线程信号槽传参必需）

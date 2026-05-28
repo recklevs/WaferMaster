@@ -26,7 +26,6 @@ include_directories(include ${OpenCV_INCLUDE_DIRS})
 # 搜集源文件
 set(SOURCES
     src/main.cpp
-    src/Common.cpp
     src/WaferAlgorithm.cpp
     src/FrameProducer.cpp
     src/MainWindow.cpp
