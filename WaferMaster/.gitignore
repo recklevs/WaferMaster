@@ -1,0 +1,8 @@
+out/
+build/
+.vs/
+bin/
+*.user
+
+# 防止 CMake FetchContent 产生的嵌套 git 仓库干扰主仓库
+**/_deps/

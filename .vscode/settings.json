@@ -1,0 +1,12 @@
+{
+    "cmake.sourceDirectory": "E:/vsproject/WaferMaster/WaferMaster",
+    "cmake.useCMakePresets": "always",
+    "cmake.defaultConfigurePreset": "vscode",
+    "cmake.defaultBuildPreset": "vscode-debug",
+    "cmake.configureOnOpen": true,
+    "cmake.buildBeforeRun": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-x64",
+    "files.encoding": "utf8",
+    "files.eol": "\r\n"
+}

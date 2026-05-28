@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="E:\vsproject\WaferMaster\build\CMakeFiles\c508fdc45800fe11d154b4f88b56465e\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{2DE0147B-8DAD-3B05-9BD1-0F5D3397B426}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

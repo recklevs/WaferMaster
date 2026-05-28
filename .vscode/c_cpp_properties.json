@@ -1,0 +1,23 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "WaferMaster",
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compilerPath": "E:/visual studio/2022/community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe",
+            "intelliSenseMode": "windows-msvc-x64",
+            "cppStandard": "c++17",
+            "includePath": [
+                "${workspaceFolder}/WaferMaster/include",
+                "${workspaceFolder}/WaferMaster/build-vscode",
+                "${workspaceFolder}/WaferMaster/build",
+                "E:/Qt/6.10.2/msvc2022_64/include",
+                "E:/Qt/6.10.2/msvc2022_64/include/QtCore",
+                "E:/Qt/6.10.2/msvc2022_64/include/QtGui",
+                "E:/Qt/6.10.2/msvc2022_64/include/QtWidgets",
+                "E:/Qt/6.10.2/msvc2022_64/include/QtNetwork",
+                "D:/opencv/opencv/build/include"
+            ]
+        }
+    ]
+}

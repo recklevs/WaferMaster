@@ -1,0 +1,49 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "qt-base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "E:/Qt/6.10.2/msvc2022_64"
+      }
+    },
+    {
+      "name": "default",
+      "inherits": "qt-base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build"
+    },
+    {
+      "name": "vscode",
+      "inherits": "qt-base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "binaryDir": "${sourceDir}/build-vscode"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vscode-debug",
+      "configurePreset": "vscode",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vscode-release",
+      "configurePreset": "vscode",
+      "configuration": "Release"
+    }
+  ]
+}
