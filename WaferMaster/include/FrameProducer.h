@@ -8,34 +8,30 @@
 #include <opencv2/opencv.hpp>
 #include "Common.h"
 
-/// @brief 采集层：从 AVI 视频文件或图片序列文件夹中逐帧读取，
-///        将帧克隆后放入线程安全队列，通过信号通知算法线程取帧。
-///
-/// 线程模型：
-///   - 必须在主线程以无父对象方式构造
-///   - 构造后 moveToThread() 迁移到独立采集线程
-///   - start() / stop() 通过跨线程信号槽触发
-///   - tryDequeueFrame() 由算法线程调用（队列锁保护，线程安全）
-///
-/// 数据所有权：
-///   - enqueueFrame() 内部调用 cv::Mat::clone() 深拷贝
-///   - 出队后的 FramePacket 所有权转移给调用方
+/**  @brief 采集层：从 AVI 视频文件或图片序列文件夹中逐帧读取，
+## FrameProducer 工作流程
+
+1. setSourceConfig() — 设好"去哪读"（路径/类型/帧间隔）
+
+2. start() 接到信号启动 → 循环读帧（AVI用cap.read，图片用imread）
+     │
+     ├─ 每读到一帧 → 调用 enqueueFrame(图像, 帧号, 时间戳)
+     │
+3. enqueueFrame — clone图像 → 打包成FramePacket → 放入m_frameQueue队尾
+     │                                       │
+     │  队列0→1时 emit frameAvailable() ────→ 通知算法线程"有货"
+     │                                       │
+4. tryDequeueFrame — 算法线程收到信号后调用，从m_frameQueue队头取走一帧
+
+5. stop() → m_running=false → start()的while循环检测到，自然退出
+
+6. 退出后 emit finished() → 通知MainWindow"采集结束" 
+*/
 class FrameProducer : public QObject
 {
     Q_OBJECT
 
-    // ========================================================================
-    // 内部数据结构：帧数据包（图像 + 帧号 + 时间戳 三合一）
-    // 用单队列替代三个平行队列，避免丢帧时索引/时间戳错位
-    // ========================================================================
-    struct FramePacket
-    {
-        cv::Mat frame;        // 帧图像数据（clone 后的独立副本）
-        qint64  frameIdx;     // 帧序号，从 0 开始递增
-        qint64  timestampMs;  // 时间戳（毫秒），AVI 取 CAP_PROP_POS_MSEC，
-                              //   图片序列取当前系统时间
-    };
-
+    struct FramePacket;//前向声明，定义在 private 区域
 public:
     /// @brief 构造采集器（必须无父对象，moveToThread 强制要求）
     explicit FrameProducer();
@@ -51,14 +47,13 @@ public:
     bool tryDequeueFrame(FramePacket& packet);
 
 public slots:
-    /// @brief 启动采集循环（跨线程信号槽触发）
-    ///
-    /// 内部流程：
-    ///   1. 根据 m_config.sourceType 走 AVI 或图片序列分支
-    ///   2. 打开源后发射 sourceInfoReady(路径, 分辨率)
-    ///   3. 循环读取帧 → enqueueFrame() 入队
-    ///   4. 退出循环后发射 finished()
-    ///   5. 异常发生时发射 errorOccurred(msg)
+    /**  @brief 启动采集循环（跨线程信号槽触发）
+    内部流程：
+       1. 根据 m_config.sourceType 走 AVI 或图片序列分支
+       2. 打开源后发射 sourceInfoReady(路径, 分辨率)
+       3. 循环读取帧 → enqueueFrame() 入队
+       4. 退出循环后发射 finished()
+       5. 异常发生时发射 errorOccurred(msg)*/
     void start();
 
     /// @brief 停止采集循环（跨线程信号槽触发）
@@ -74,7 +69,7 @@ signals:
     void finished();
 
     /// @brief 采集过程中发生错误时发射
-    /// @param message 人类可读的错误描述
+    /// @param message 可读的错误描述
     void errorOccurred(const QString& message);
 
     /// @brief 采集源打开成功后发射，供 UI 显示路径和分辨率
@@ -83,17 +78,27 @@ signals:
     void sourceInfoReady(const QString& path, const QSize& resolution);
 
 private:
-    /// @brief 将一帧入队（仅 start() 内部调用）
-    ///
-    /// 线程安全规则：
-    ///   - 入队前对 cv::Mat 执行 clone() 深拷贝
-    ///   - 队列满（≥ m_config.maxQueueSize）时丢弃队列头部最旧帧
-    ///   - 队列从空变为非空时，发射 frameAvailable() 信号
-    ///
-    /// @param frame       原始帧（只读，内部 clone 后入队）
-    /// @param frameIdx    帧序号
-    /// @param timestampMs 时间戳（毫秒）
-    /// @return 是否成功入队（队列满导致丢帧时返回 false）
+// ========================================================================
+    // 内部数据结构：单队列帧数据包容器（图像 + 帧号 + 时间戳 三合一）
+    // ========================================================================
+    struct FramePacket
+    {
+        cv::Mat frame;        // 帧图像数据（clone 后的独立副本）
+        qint64  frameIdx;     // 帧序号，从 0 开始递增
+        qint64  timestampMs;  // 时间戳（毫秒），AVI 取 CAP_PROP_POS_MSEC，
+                              //   图片序列取当前系统时间
+    };
+
+    /** @brief 把start()读取到的帧数据放入FramePacket
+    线程安全规则：
+       - 入队前对 cv::Mat 执行 clone() 深拷贝
+       - 队列满（≥ m_config.maxQueueSize）时丢弃队列头部最旧帧
+       - 队列从空变为非空时，发射 frameAvailable() 信号
+   
+        @param frame       原始帧（只读，内部 clone 后入队）
+        @param frameIdx    帧序号
+        @param timestampMs 时间戳（毫秒）
+        @return 是否成功入队（队列满导致丢帧时返回 false）*/
     bool enqueueFrame(const cv::Mat& frame, qint64 frameIdx, qint64 timestampMs);
 
     // ========================================================================

@@ -72,7 +72,7 @@ struct AlgoResult
     double p95         = 0.0;         // P95 指标（热区像素强度第95百分位值）
     double hotRatio    = 0.0;         // HotRatio：热区像素占总像素的比例（0~100%）
     DetectionLevel level = DetectionLevel::Good; // 检测等级，由 classify() 根据阈值判定
-    QRect algoRoiRect;                 // 算法 ROI 矩形区域（注意：不是观察ROI）
+    QRect algoRoiRect;                 // 算法 ROI 矩形区域
     cv::Mat frameOriginal;             // 原始输入帧（clone 后的独立副本）
     cv::Mat frameSpectrum;             // 频谱图（处理中间结果，用于显示）
     cv::Mat frameFlatness;             // 平坦图（最终检测结果图，用于显示）
