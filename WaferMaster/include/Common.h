@@ -47,15 +47,24 @@ struct SourceConfig
     int maxQueueSize = 10;                                       // 帧队列最大长度，满时丢最旧帧
 };
 
+/// @brief 帧数据包，采集层入队时打包，算法层出队时解包
+struct FramePacket
+{
+    cv::Mat frame;        ///< 帧图像（clone 后的独立副本）
+    qint64  frameIdx;     ///< 帧序号，从0开始递增
+    qint64  timestampMs;  ///< 时间戳（ms）
+};
+
 /// @brief 算法参数配置，WaferAlgorithm 初始化时传入
 struct AlgoConfig
 {
-    double fiThreshold       = 18.0;  // FI 平坦度判定阈值
-    double hotRatioThreshold = 5.0;   // HotRatio 判定阈值（Hot区像素占比，%），超出则判定异常
-    double roiRatioW         = 0.70;  // 算法 ROI 宽度占原图的比例（0~1），中心裁切
-    double roiRatioH         = 0.70;  // 算法 ROI 高度占原图的比例（0~1），中心裁切
-    double bandPassInnerRatio = 0.02; // 带通滤波器内径比例（相对频谱最大半径），低频截止
-    double bandPassOuterRatio = 0.15; // 带通滤波器外径比例（相对频谱最大半径），高频截止
+    double fiThreshold        = 18.0;  // FI 平坦度判定阈值
+    double p95Threshold       = 30.0;  // P95 热区像素强度阈值（Hot区像素亮度上限）
+    double hotRatioThreshold  = 5.0;   // HotRatio 判定阈值（Hot区像素占比，%），超出则判定异常
+    double roiRatioW          = 0.70;  // 算法 ROI 宽度占原图的比例（0~1），中心裁切
+    double roiRatioH          = 0.70;  // 算法 ROI 高度占原图的比例（0~1），中心裁切
+    double bandPassInnerRatio = 0.02;  // 带通滤波器内径比例（相对频谱最大半径），低频截止
+    double bandPassOuterRatio = 0.15;  // 带通滤波器外径比例（相对频谱最大半径），高频截止
 };
 
 // ============================================================================

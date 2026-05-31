@@ -31,7 +31,6 @@ class FrameProducer : public QObject
 {
     Q_OBJECT
 
-    struct FramePacket;//前向声明，定义在 private 区域
 public:
     /// @brief 构造采集器（必须无父对象，moveToThread 强制要求）
     explicit FrameProducer();
@@ -78,17 +77,6 @@ signals:
     void sourceInfoReady(const QString& path, const QSize& resolution);
 
 private:
-// ========================================================================
-    // 内部数据结构：单队列帧数据包容器（图像 + 帧号 + 时间戳 三合一）
-    // ========================================================================
-    struct FramePacket
-    {
-        cv::Mat frame;        // 帧图像数据（clone 后的独立副本）
-        qint64  frameIdx;     // 帧序号，从 0 开始递增
-        qint64  timestampMs;  // 时间戳（毫秒），AVI 取 CAP_PROP_POS_MSEC，
-                              //   图片序列取当前系统时间
-    };
-
     /** @brief 把start()读取到的帧数据放入FramePacket
     线程安全规则：
        - 入队前对 cv::Mat 执行 clone() 深拷贝
