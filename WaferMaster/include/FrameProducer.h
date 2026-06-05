@@ -46,7 +46,7 @@ public:
     bool tryDequeueFrame(FramePacket& packet);
 
 public slots:
-    /**  @brief 启动采集循环（跨线程信号槽触发）
+    /**  @brief 生产者：启动采集循环（跨线程信号槽触发）
     内部流程：
        1. 根据 m_config.sourceType 走 AVI 或图片序列分支
        2. 打开源后发射 sourceInfoReady(路径, 分辨率)
