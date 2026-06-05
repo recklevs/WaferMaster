@@ -2,10 +2,8 @@
 #include "FrameProducer.h"
 
 #include <opencv2/opencv.hpp>
-#include <fstream>
 #include <algorithm>
 #include <vector>
-#include <iomanip>
 #include <cmath>
 
 // ============================================================================
@@ -47,54 +45,25 @@ void WaferAlgorithm::processPendingFrames()
         return;
     }
 
-    // 打开 CSV 文件（算法线程直接写文件）
-    std::ofstream csvFile("flatness_metrics.csv", std::ios::out | std::ios::trunc);
-    if (!csvFile.is_open())
-    {
-        emit errorOccurred(QStringLiteral("无法创建 CSV 文件：flatness_metrics.csv"));
-        return;
-    }
-
-    // 写入 CSV 表头
-    csvFile << "frame_idx,timestamp_ms,fi,p95,hot_ratio,level,roi_x,roi_y,roi_w,roi_h\n";
-    csvFile << std::fixed << std::setprecision(6);
-
     FramePacket packet;
     while (m_running)
     {
-        // 从采集层拉帧
         if (!m_producer->tryDequeueFrame(packet))
-        {
-            // 队列已空，等待下一次 frameAvailable() 唤醒
-            break;
-        }
+            break;   // 队列空，直接返回
 
-        // 执行算法主链
         AlgoResult result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);
-
-        // 写 CSV 行
-        csvFile << result.frameIdx << "," << result.timestampMs << ","
-                << result.fi << "," << result.p95 << ","
-                << result.hotRatio << ","
-                << detectionLevelToString(result.level).toStdString() << ","
-                << result.algoRoiRect.x() << "," << result.algoRoiRect.y() << ","
-                << result.algoRoiRect.width() << "," << result.algoRoiRect.height() << "\n";
-
-        // 发出结果给 UI 线程显示
         emit resultReady(result);
     }
-
-    csvFile.close();
-    emit finished();
 }
 
 void WaferAlgorithm::stop()
 {
     m_running = false;
+    emit finished();
 }
 
 // ============================================================================
-// 私有方法：算法主链（承接 Project2）
+// 私有方法：算法主链
 // ============================================================================
 
 AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frameIdx, qint64 timestampMs) const

@@ -26,14 +26,12 @@ class FrameProducer;
      │
 5. classify() — 根据三指标阈值判定 Good/Warning/NG
      │
-6. resultReady() — 发出 AlgoResult（含 original/spectrum/flatness 三图）
-     │
-7. CSV 由算法线程直接写文件（不通过信号传递）
-
-8. stop() → m_running=false → processPendingFrames() 循环退出
-     │
-9. 退出后 emit finished()
-*/
+ 6. resultReady() — 发出 AlgoResult（含 original/spectrum/flatness 三图）
+      │
+ 7. stop() → m_running=false → processPendingFrames() 循环退出
+      │
+ 8. stop() 中发射 finished()
+ */
 class WaferAlgorithm : public QObject
 {
     Q_OBJECT
@@ -54,11 +52,11 @@ public:
 public slots:
     /**  @brief 消费者：处理队列中所有待处理帧（由 frameAvailable() 信号触发）
     内部流程：
-       1. 循环调用 m_producer->tryDequeueFrame() 拉帧
-       2. 每取到一帧 → processSingleFrame() → classify()
-       3. 发射 resultReady()
-       4. 队列清空后返回，等待下一次 frameAvailable() 唤醒
-       5. m_running==false 时立即退出循环*/
+        1. 循环调用 m_producer->tryDequeueFrame() 拉帧
+        2. 每取到一帧 → processSingleFrame()
+        3. emit resultReady(result)
+        4. 队列清空后直接返回，等待下一次 frameAvailable() 唤醒
+        5. m_running==false 时立即退出循环*/
     void processPendingFrames();
 
     /// @brief 停止算法处理循环
