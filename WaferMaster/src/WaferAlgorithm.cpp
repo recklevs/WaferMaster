@@ -120,8 +120,8 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
     cv::magnitude(planes[0], planes[1], magnitudeImg);
     magnitudeImg += cv::Scalar::all(1);
     cv::log(magnitudeImg, magnitudeImg);
-    cv::normalize(magnitudeImg, magnitudeImg, 0, 1, cv::NORM_MINMAX);
-    result.frameSpectrum = magnitudeImg.clone();
+    cv::normalize(magnitudeImg, magnitudeImg, 0, 255, cv::NORM_MINMAX);
+    magnitudeImg.convertTo(result.frameSpectrum, CV_8UC1);
 
     // --- 步骤5：圆环带通掩膜 ---
     cv::Mat mask = cv::Mat::zeros(complexI.size(), CV_32F);
