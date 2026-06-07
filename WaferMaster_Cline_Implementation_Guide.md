@@ -90,7 +90,7 @@
 必须明确：
 - 观察 ROI 不参与算法统计
 - `AlgoResult` 是算法层到表现层的唯一结果载体
-- CSV 记录随 `AlgoResult` 同步产生，但不由 UI 写入
+- 通讯层仅预留接口，Phase 1 不落具体类
 
 ### 2.4 三条线程安全硬规则
 
@@ -326,21 +326,22 @@ public:
     void setFrameProducer(FrameProducer* producer);
 
 public slots:
+    void start();
     void processPendingFrames();
     void stop();
 
 signals:
     void resultReady(const AlgoResult& result);
-    void csvRowReady(const QString& row);
     void finished();
     void errorOccurred(const QString& message);
 
 private:
     AlgoResult processSingleFrame(const cv::Mat& frame, qint64 frameIdx, qint64 timestampMs) const;
-    DetectionLevel classify(double fi, double p95, double hotRatio) const;
+    void shiftDFT(cv::Mat& fImage) const;
     QRect makeCentralRoi(const QSize& size) const;
+    float percentile95(const cv::Mat& roi32f) const;
+    DetectionLevel classify(double fi, double p95, double hotRatio) const;
 
-private:
     AlgoConfig m_config;
     FrameProducer* m_producer = nullptr;
     bool m_running = true;
@@ -348,11 +349,12 @@ private:
 ```
 
 接口语义固定为：
+- `start()` 在 MainWindow 点击"开始检测"时调用，重置 `m_running = true`，允许 `processPendingFrames` 再次被唤醒
+- `stop()` 调用后 `m_running = false`，并 `emit finished()`
 - `processPendingFrames()` 由 `frameAvailable()` 触发
 - 被唤醒后循环从 `FrameProducer` 拉帧，直到队列清空
 - `processSingleFrame(...)` 内部完整承接 `Project2` 算法主链
 - `resultReady(...)` 发出前，`AlgoResult` 中的三张 `cv::Mat` 必须可安全跨线程显示
-- `csvRowReady(...)` 可选；如果实现者改为算法层直接写 CSV，也必须保持 UI 不参与 CSV 拼接
 
 ### 4.4 `MainWindow`
 
@@ -364,9 +366,13 @@ private:
 #include <QMainWindow>
 #include <QThread>
 #include <QImage>
+#include <QRect>
+#include <QSize>
+#include <QPoint>
 #include <opencv2/opencv.hpp>
 #include "Common.h"
 
+class QLabel;
 class FrameProducer;
 class WaferAlgorithm;
 
@@ -382,43 +388,76 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private slots:
     void onBrowseClicked();
     void onStartClicked();
     void onStopClicked();
     void onObserveRoiToggled(bool checked);
+    void onSourceInfoReady(const QString& path, const QSize& resolution);
     void onAlgorithmResultReady(const AlgoResult& result);
     void onWorkerError(const QString& message);
+    void onProducerFinished();
+    void onAlgorithmFinished();
 
 private:
     void setupUiState();
-    void setupThreads();
+    void setupWorkers();
     void setupConnections();
+    void cleanupWorkers();
+
+    SourceConfig buildSourceConfig() const;
     void updateRunState(RunState state);
-    void updateStatusBar(const AlgoResult& result);
+    void updateStatusBarText();
     void refreshMainViews(const AlgoResult& result);
     void refreshObserveRoiViews();
+
     QImage cvMatToQImage(const cv::Mat& mat) const;
+    void showMatOnLabel(QLabel* label, const cv::Mat& mat) const;
+
+    QRect mapLabelRectToImageRect(QLabel* label, const QSize& imageSize, const QRect& labelRect) const;
+    QRect normalizedObserveRect() const;
 
 private:
     Ui::MainWindow* ui = nullptr;
+
     QThread* m_producerThread = nullptr;
     QThread* m_algorithmThread = nullptr;
     FrameProducer* m_producer = nullptr;
     WaferAlgorithm* m_algorithm = nullptr;
+
     RunState m_runState = RunState::Idle;
+    SourceConfig m_sourceConfig;
     AlgoResult m_lastResult;
-    QRect m_observeRoiRect;
+
+    QString m_currentPath;
+    QSize m_currentResolution;
+
     bool m_observeRoiEnabled = false;
+    bool m_isSelectingObserveRoi = false;
+    QPoint m_observeStartPoint;
+    QPoint m_observeEndPoint;
+    QRect m_observeRoiRect;
 };
 ```
 
 接口语义固定为：
 - `MainWindow` 只做线程编排、显示刷新、状态管理、观察 ROI 交互
 - `cvMatToQImage(...)` 直接参考 `QtWidgetsApplication1`
+- `showMatOnLabel(...)` 封装 `cvMatToQImage` + `QLabel::setPixmap`
 - 观察 ROI 只允许在 `Idle / Stopped` 状态使用
 - `refreshObserveRoiViews()` 从 `m_lastResult.frameOriginal / frameFlatness` 裁出两张 ROI 小图
+- `onSourceInfoReady(...)` 接 `FrameProducer::sourceInfoReady` 信号，更新路径和分辨率
+- `buildSourceConfig()` 从 UI 控件收集中断值构造 `SourceConfig`
+- `eventFilter()` 实现原图 QLabel 上的鼠标框选交互
+- `mapLabelRectToImageRect()` 将 QLabel 像素坐标映射到实际图像像素坐标
 - `MainWindow` 不做算法计算，不读帧，不写 CSV
+
+MainWindow 实施分两阶段：
+1. Phase 1 主链路：线程创建、开始/停止、`qRegisterMetaType<AlgoResult>()`、三图刷新、状态栏基础信息
+2. Phase 2 观察 ROI：`eventFilter()`、原图框选、ROI 原图、ROI 结果图、运行中禁用观察 ROI
 
 ---
 
@@ -511,8 +550,8 @@ private:
 
 ### 7.3 主链路
 
-- 点击“开始检测”后，原图、频谱图、平坦图连续刷新
-- 点击“停止检测”后，线程安全停机，界面保留最后一帧结果
+- 点击"开始检测"后，原图、频谱图、平坦图连续刷新
+- 点击"停止检测"后，线程安全停机，界面保留最后一帧结果
 - 停止后再次开始，不需要重启程序即可继续工作
 
 ### 7.4 指标与状态
@@ -548,23 +587,6 @@ private:
 - 队列满时会丢最旧帧，不会无限堆积
 - 连续运行 5 分钟内无明显卡死、未响应、跨线程 UI 操作错误
 - 运行期间不会因 `cv::Mat` 共享导致随机崩溃或脏图
-
-### 7.7 CSV
-
-- 能生成 `flatness_metrics.csv`
-- 至少包含以下列：
-  - `frame_idx`
-  - `timestamp_ms`
-  - `fi`
-  - `p95`
-  - `hot_ratio`
-  - `level`
-  - `roi_x`
-  - `roi_y`
-  - `roi_w`
-  - `roi_h`
-- CSV 记录与算法输出帧一一对应
-- UI 层不负责拼接 CSV 行
 
 ---
 

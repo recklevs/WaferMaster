@@ -37,6 +37,11 @@ void WaferAlgorithm::setFrameProducer(FrameProducer* producer)
 // 公有槽
 // ============================================================================
 
+void WaferAlgorithm::start()
+{
+    m_running = true;
+}
+
 void WaferAlgorithm::processPendingFrames()
 {
     if (!m_producer)
@@ -233,14 +238,14 @@ float WaferAlgorithm::percentile95(const cv::Mat& roi32f) const
 {
     // 将 ROI 内所有像素值拷贝到 vector
     std::vector<float> values;
-    values.reserve(roi32f.rows * roi32f.cols);
+    values.reserve(roi32f.rows * roi32f.cols);//预分配内存
 
     for (int r = 0; r < roi32f.rows; ++r)
     {
-        const float* row = roi32f.ptr<float>(r);
+        const float* row = roi32f.ptr<float>(r);//按 float 类型访问矩阵数据，获取第 r 行的起始地址，并把它存到一个只读指针里
         for (int c = 0; c < roi32f.cols; ++c)
         {
-            values.push_back(row[c]);
+            values.push_back(row[c]); // 逐像素拷贝
         }
     }
 

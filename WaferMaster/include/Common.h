@@ -91,7 +91,7 @@ struct AlgoResult
 // 工具函数
 // ============================================================================
 
-/// 将检测等级枚举转为可读字符串，供状态栏和CSV使用
+/// 将检测等级枚举转为可读字符串，供状态栏使用
 inline QString detectionLevelToString(DetectionLevel level)
 {
     switch (level)

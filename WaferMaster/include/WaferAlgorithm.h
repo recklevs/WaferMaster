@@ -50,6 +50,9 @@ public:
     void setFrameProducer(FrameProducer* producer);
 
 public slots:
+    /// @brief 启动算法处理（重置运行标志，允许 processPendingFrames 再次被唤醒）
+    void start();
+
     /**  @brief 消费者：处理队列中所有待处理帧（由 frameAvailable() 信号触发）
     内部流程：
         1. 循环调用 m_producer->tryDequeueFrame() 拉帧
