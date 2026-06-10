@@ -63,32 +63,17 @@ void MainWindow::setupUiState()
 
 void MainWindow::setupWorkers()
 {
-    // 创建采集层工作对象（无父对象，moveToThread 要求）
-    m_producer = new FrameProducer();
-
-    // 创建算法层工作对象（无父对象）
-    m_algorithm = new WaferAlgorithm();
-
-    // 创建两条独立线程
+    // 只创建线程对象（由 parent=this 管理生命周期）
+    // Worker 对象由 onStartClicked() 全量重建
+// 创建两条独立线程    
     m_producerThread  = new QThread(this);
     m_algorithmThread = new QThread(this);
-
-    // 工作对象迁移到各自线程
-    m_producer->moveToThread(m_producerThread);
-    m_algorithm->moveToThread(m_algorithmThread);
-
-    // 线程 start 信号 → 工作对象 start 槽
-    connect(m_producerThread,  &QThread::started, m_producer,  &FrameProducer::start);
-    connect(m_algorithmThread, &QThread::started, m_algorithm, &WaferAlgorithm::start);
-
-    // 线程 finished 信号 → 工作对象 deleteLater（可选，由 cleanupWorkers 管理）
-    // 此处不自动 delete，由 cleanupWorkers() 统一回收
 }
 
 void MainWindow::setupConnections()
 {
     // ========================================================================
-    // UI 控件 → MainWindow 槽
+    // UI 控件 → MainWindow 槽（生命周期与 MainWindow 等长，此处一次性连接）
     // ========================================================================
 
     // 手动 connect，使用自定义槽名（非 Qt 自动连接约定）
@@ -103,31 +88,7 @@ void MainWindow::setupConnections()
     connect(ui->sliderBright,   &QSlider::valueChanged, this, &MainWindow::onBrightnessChanged);
     connect(ui->sliderContrast, &QSlider::valueChanged, this, &MainWindow::onContrastChanged);
 
-    // ========================================================================
-    // FrameProducer → WaferAlgorithm 唤醒
-    // ========================================================================
-    connect(m_producer,  &FrameProducer::frameAvailable,
-            m_algorithm, &WaferAlgorithm::processPendingFrames);
-
-    // ========================================================================
-    // FrameProducer → MainWindow
-    // ========================================================================
-    connect(m_producer, &FrameProducer::sourceInfoReady,
-            this,       &MainWindow::onSourceInfoReady);
-    connect(m_producer, &FrameProducer::errorOccurred,
-            this,       &MainWindow::onWorkerError);
-    connect(m_producer, &FrameProducer::finished,
-            this,       &MainWindow::onProducerFinished);
-
-    // ========================================================================
-    // WaferAlgorithm → MainWindow
-    // ========================================================================
-    connect(m_algorithm, &WaferAlgorithm::resultReady,
-            this,        &MainWindow::onAlgorithmResultReady);
-    connect(m_algorithm, &WaferAlgorithm::errorOccurred,
-            this,        &MainWindow::onWorkerError);
-    connect(m_algorithm, &WaferAlgorithm::finished,
-            this,        &MainWindow::onAlgorithmFinished);
+    // 跨线程 Worker 连接由 onStartClicked() 全量重建，此处不连接
 }
 
 void MainWindow::cleanupWorkers()
@@ -143,32 +104,37 @@ void MainWindow::cleanupWorkers()
         QMetaObject::invokeMethod(m_algorithm, "stop", Qt::QueuedConnection);
     }
 
-    // 等待线程退出
+    // 等待线程退出（quit() 会处理完已排队的 invokeMethod 调用再退出）
+    // QTimer 驱动版 stop() 立即中断，wait(500) 绰绰有余
     if (m_producerThread && m_producerThread->isRunning())
     {
         m_producerThread->quit();
-        m_producerThread->wait(5000);
+        m_producerThread->wait(500);
     }
     if (m_algorithmThread && m_algorithmThread->isRunning())
     {
         m_algorithmThread->quit();
-        m_algorithmThread->wait(5000);
+        m_algorithmThread->wait(500);
     }
 
-    // 释放工作对象
-    if (m_producer)
+    // quit + wait 后线程已停止，直接 delete Worker 安全
+    // （Worker 亲和性在已退出的线程上，无事件循环处理 deleteLater）
+    delete m_producer;
+    m_producer = nullptr;
+    delete m_algorithm;
+    m_algorithm = nullptr;
+
+    // 线程通过 deleteLater 延迟回收，让 Qt 在事件循环中安全销毁 QThread 对象
+    if (m_producerThread)
     {
-        m_producer->deleteLater();
-        m_producer = nullptr;
+        m_producerThread->deleteLater();
+        m_producerThread = nullptr;
     }
-    if (m_algorithm)
+    if (m_algorithmThread)
     {
-        m_algorithm->deleteLater();
-        m_algorithm = nullptr;
+        m_algorithmThread->deleteLater();
+        m_algorithmThread = nullptr;
     }
-    // QThread 由 parent (this) 管理，析构时自动回收
-    m_producerThread  = nullptr;
-    m_algorithmThread = nullptr;
 }
 
 // ============================================================================
@@ -213,35 +179,53 @@ void MainWindow::onStartClicked()
         return;
     }
 
-    // 重新创建工作对象（上次可能已被 deleteLater）
-    if (!m_producer)
-    {
-        m_producer = new FrameProducer();
-        m_producer->moveToThread(m_producerThread);
-        connect(m_producer, &FrameProducer::frameAvailable,
-                m_algorithm, &WaferAlgorithm::processPendingFrames);
-        connect(m_producer, &FrameProducer::sourceInfoReady,
-                this, &MainWindow::onSourceInfoReady);
-        connect(m_producer, &FrameProducer::errorOccurred,
-                this, &MainWindow::onWorkerError);
-        connect(m_producer, &FrameProducer::finished,
-                this, &MainWindow::onProducerFinished);
-        connect(m_producerThread, &QThread::started,
-                m_producer, &FrameProducer::start);
-    }
-    if (!m_algorithm)
-    {
-        m_algorithm = new WaferAlgorithm();
-        m_algorithm->moveToThread(m_algorithmThread);
-        connect(m_algorithm, &WaferAlgorithm::resultReady,
-                this, &MainWindow::onAlgorithmResultReady);
-        connect(m_algorithm, &WaferAlgorithm::errorOccurred,
-                this, &MainWindow::onWorkerError);
-        connect(m_algorithm, &WaferAlgorithm::finished,
-                this, &MainWindow::onAlgorithmFinished);
-        connect(m_algorithmThread, &QThread::started,
-                m_algorithm, &WaferAlgorithm::start);
-    }
+    // 全量重建 — 每次启动都重建线程和工作对象，状态最清晰
+    // 先确保旧资源已释放
+    cleanupWorkers();
+
+    // 重建线程
+    if (!m_producerThread)
+        m_producerThread = new QThread(this);
+    if (!m_algorithmThread)
+        m_algorithmThread = new QThread(this);
+
+    // 先创建 Algorithm，再创建 Producer
+    m_algorithm = new WaferAlgorithm();
+    m_producer = new FrameProducer();
+
+    // 迁移到各自线程
+    m_producer->moveToThread(m_producerThread);
+    m_algorithm->moveToThread(m_algorithmThread);
+
+    // ====================================================================
+    // 重建全部跨线程连接（每次全量重建，简洁无残留）
+    // ====================================================================
+
+    // FrameProducer → WaferAlgorithm 唤醒
+    connect(m_producer,  &FrameProducer::frameAvailable,
+            m_algorithm, &WaferAlgorithm::processPendingFrames);
+
+    // FrameProducer → MainWindow
+    connect(m_producer, &FrameProducer::sourceInfoReady,
+            this,       &MainWindow::onSourceInfoReady);
+    connect(m_producer, &FrameProducer::errorOccurred,
+            this,       &MainWindow::onWorkerError);
+    connect(m_producer, &FrameProducer::finished,
+            this,       &MainWindow::onProducerFinished);
+
+    // WaferAlgorithm → MainWindow
+    connect(m_algorithm, &WaferAlgorithm::resultReady,
+            this,        &MainWindow::onAlgorithmResultReady);
+    connect(m_algorithm, &WaferAlgorithm::errorOccurred,
+            this,        &MainWindow::onWorkerError);
+    connect(m_algorithm, &WaferAlgorithm::finished,
+            this,        &MainWindow::onAlgorithmFinished);
+
+    // 线程 started → Worker start 槽
+    connect(m_producerThread,  &QThread::started,
+            m_producer,        &FrameProducer::start);
+    connect(m_algorithmThread, &QThread::started,
+            m_algorithm,       &WaferAlgorithm::start);
 
     // 注入配置
     m_producer->setSourceConfig(m_sourceConfig);

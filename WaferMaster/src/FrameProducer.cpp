@@ -42,7 +42,7 @@ bool FrameProducer::tryDequeueFrame(FramePacket& packet)
 }
 
 // ============================================================================
-// 槽函数：start() — 采集循环
+// 槽函数：start() — 打开源 + 启动 QTimer
 // ============================================================================
 
 void FrameProducer::start()
@@ -52,38 +52,19 @@ void FrameProducer::start()
     if (m_config.sourceType == InputSourceType::AviVideo)
     {
         // ---- AVI 视频分支 ----
-        cv::VideoCapture cap;
-        cap.open(m_config.sourcePath.toStdString());//把Qt 的 `QString` 转成 C++ 标准 `std::string`
+        m_cap.open(m_config.sourcePath.toStdString());//把Qt 的 `QString` 转成 C++ 标准 `std::string`
 
-        if (!cap.isOpened())
+        if (!m_cap.isOpened())
         {
-            emit errorOccurred(QStringLiteral("无法打开视频文件：%1").arg(m_config.sourcePath));//Qt 的字符串格式化，%1 被替换成文件路径
+            emit errorOccurred(QStringLiteral("无法打开视频文件：%1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
 
         // 发射源信息
-        int w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));//get获取当前视频帧宽度的double
-        int h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+        int w = static_cast<int>(m_cap.get(cv::CAP_PROP_FRAME_WIDTH));
+        int h = static_cast<int>(m_cap.get(cv::CAP_PROP_FRAME_HEIGHT));
         emit sourceInfoReady(m_config.sourcePath, QSize(w, h));
-
-        qint64 frameIdx = 0;
-        cv::Mat frame;
-
-        while (m_running)
-        {
-            cap.read(frame);
-            if (frame.empty())
-                break;   // 视频播完，正常退出（不是错误）
-
-            double ts = cap.get(cv::CAP_PROP_POS_MSEC);//当前帧对应的时间戳（ms）
-            enqueueFrame(frame, frameIdx, static_cast<qint64>(ts));//打包入队
-
-            ++frameIdx;
-            QThread::msleep(m_config.frameIntervalMs);//线程睡眠函数，让当前线程暂停指定的毫秒数
-        }
-
-        cap.release();// 关闭视频文件，释放资源
     }
     else
     {
@@ -120,38 +101,103 @@ void FrameProducer::start()
             emit sourceInfoReady(m_config.sourcePath, QSize(firstFrame.cols, firstFrame.rows));
 
         m_nextImageIndex = 0;//是计数器也是索引，记录下一张待读取的图片在 m_imageFiles 中的位置，从0开始递增
-
-        while (m_running && m_nextImageIndex < m_imageFiles.size())//循环读取图片，直到 m_running 被置 false 或者读完所有图片
-        {
-            cv::Mat frame = cv::imread(m_imageFiles.at(m_nextImageIndex).toStdString());
-
-            if (frame.empty())
-            {
-                // 单张图片读取失败：跳过，继续下一张（不中断采集）
-                ++m_nextImageIndex;
-                continue;
-            }
-
-            qint64 ts = QDateTime::currentMSecsSinceEpoch();//获取当前系统时间的时间戳（ms），模拟帧采集时的时间戳
-            enqueueFrame(frame, m_nextImageIndex, ts);//m_nextImageIndex会int→ qint64隐式转换
-
-            ++m_nextImageIndex;
-            QThread::msleep(m_config.frameIntervalMs);
-        }
     }
 
-    // 正常结束（非错误退出）
-    emit finished();
-    m_running = false;
+    // 创建 QTimer（this 作为父对象）
+    m_timer = new QTimer(this);
+    connect(m_timer, &QTimer::timeout, this, &FrameProducer::tick);
+    m_timer->start(m_config.frameIntervalMs);
 }
 
 // ============================================================================
-// 槽函数：stop()
+// 私有槽：tick() — QTimer 每次触发时读一帧
+// ============================================================================
+
+void FrameProducer::tick()
+{
+    if (!m_running)
+    {
+        // 被 stop() 抢先设 false，直接忽略本次 tick
+        return;
+    }
+
+    cv::Mat frame;
+    qint64 ts = 0;
+    qint64 frameIdx = 0;
+
+    if (m_config.sourceType == InputSourceType::AviVideo)
+    {
+        // ---- AVI 视频：读一帧 ----
+        m_cap.read(frame);
+        if (frame.empty())
+        {
+            // 视频播放完毕，自然结束
+            m_timer->stop();
+            m_cap.release();
+            emit finished();
+            return;
+        }
+        ts = m_cap.get(cv::CAP_PROP_POS_MSEC);
+        frameIdx = m_nextImageIndex; // AVI 也用递增计数器
+        ++m_nextImageIndex;
+    }
+    else
+    {
+        // ---- 图片序列：读一张 ----
+        if (m_nextImageIndex >= m_imageFiles.size())
+        {
+            // 全部读完，自然结束
+            m_timer->stop();
+            emit finished();
+            return;
+        }
+
+        frame = cv::imread(m_imageFiles.at(m_nextImageIndex).toStdString());
+
+        if (frame.empty())
+        {
+            // 单张图片读取失败：跳过，继续下一张
+            ++m_nextImageIndex;
+            return;
+        }
+
+        ts = QDateTime::currentMSecsSinceEpoch();
+        frameIdx = m_nextImageIndex;
+        ++m_nextImageIndex;
+    }
+
+    enqueueFrame(frame, frameIdx, ts);
+}
+
+// ============================================================================
+// 槽函数：stop() — 立即停止 QTimer，释放资源
 // ============================================================================
 
 void FrameProducer::stop()
 {
-    m_running = false;   // 循环检测到 false 后自然退出
+    m_running = false;
+
+    // 停止定时器——后续 tick 不会被调度
+    if (m_timer)
+    {
+        m_timer->stop();
+        // 不 delete，start() 会重建；stop() 后 delete Worker 时自动析构
+    }
+
+    // 释放视频采集器
+    if (m_cap.isOpened())
+        m_cap.release();
+
+    // 清空队列
+    {
+        QMutexLocker locker(&m_queueMutex);
+        m_frameQueue.clear();
+    }
+
+    // 清空图片列表
+    m_imageFiles.clear();
+
+    emit finished();
 }
 
 // ============================================================================

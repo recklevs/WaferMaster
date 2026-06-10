@@ -3,19 +3,23 @@
 #include <QObject>
 #include <QQueue>
 #include <QMutex>
+#include <QTimer>
 #include <QStringList>
 #include <QSize>
 #include <opencv2/opencv.hpp>
 #include "Common.h"
 
 /**  @brief 采集层：从 AVI 视频文件或图片序列文件夹中逐帧读取，
-## FrameProducer 工作流程
+            QTimer 驱动，stop() 可立即中断。
+
+## FrameProducer 工作流程 (QTimer 版)
 
 1. setSourceConfig() — 设好"去哪读"（路径/类型/帧间隔）
 
-2. start() 接到信号启动 → 循环读帧（AVI用cap.read，图片用imread）
+2. start() — 打开源 → 发射 sourceInfoReady → 创建 QTimer(this)
+            → connect(timeout → tick()) → m_timer->start(frameIntervalMs)
      │
-     ├─ 每读到一帧 → 调用 enqueueFrame(图像, 帧号, 时间戳)
+     │  每次 tick() 读一帧 → enqueueFrame() 入队
      │
 3. enqueueFrame — clone图像 → 打包成FramePacket → 放入m_frameQueue队尾
      │                                       │
@@ -23,9 +27,8 @@
      │                                       │
 4. tryDequeueFrame — 算法线程收到信号后调用，从m_frameQueue队头取走一帧
 
-5. stop() → m_running=false → start()的while循环检测到，自然退出
-
-6. 退出后 emit finished() → 通知MainWindow"采集结束" 
+5. stop() → m_running=false → m_timer->stop() 立即停止调度
+         → cap.release() → 清空队列 → emit finished()
 */
 class FrameProducer : public QObject
 {
@@ -56,8 +59,13 @@ public slots:
     void start();
 
     /// @brief 停止采集循环（跨线程信号槽触发）
-    ///        设置 m_running = false，当前帧读取完毕后自然退出
+    ///        QTimer 驱动版：m_timer->stop() 立即生效，不再等待当前帧读完
     void stop();
+
+private slots:
+    /// @brief QTimer 每次触发时读一帧（AVI: cap.read, 图片: imread）
+    ///        读到空/读完 → m_timer->stop() → cap.release() → emit finished()
+    void tick();
 
 signals:
     /// @brief 帧队列从空变为非空时发射，用于唤醒算法线程取帧
@@ -92,10 +100,12 @@ private:
     // ========================================================================
     // 成员变量
     // ========================================================================
-    SourceConfig         m_config;          // 输入源配置（类型/路径/帧间隔/队列容量）
-    QQueue<FramePacket>  m_frameQueue;      // 帧数据队列（单队列三合一，线程安全）
-    QMutex               m_queueMutex;      // 保护 m_frameQueue 的互斥锁
-    bool                 m_running = false; // 运行标志（start() 置 true，stop() 置 false）
-    QStringList          m_imageFiles;      // 图片序列模式下的文件路径列表（已排序）
+    SourceConfig         m_config;           // 输入源配置（类型/路径/帧间隔/队列容量）
+    QQueue<FramePacket>  m_frameQueue;       // 帧数据队列（单队列三合一，线程安全）
+    QMutex               m_queueMutex;       // 保护 m_frameQueue 的互斥锁
+    bool                 m_running = false;  // 运行标志（start() 置 true，stop() 置 false）
+    QStringList          m_imageFiles;       // 图片序列模式下的文件路径列表（已排序）
     int                  m_nextImageIndex = 0; // 图片序列模式下的下一张待读取索引
+    QTimer*              m_timer = nullptr;  // 帧间隔定时器（停后立即清零，不可再用）
+    cv::VideoCapture     m_cap;              // AVI 视频采集器（stop() 时 release()）
 };
