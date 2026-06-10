@@ -229,8 +229,8 @@ void MainWindow::onStartClicked()
 
     // 注入配置
     m_producer->setSourceConfig(m_sourceConfig);
-    AlgoConfig algoCfg; // 使用默认参数（Common.h 中的阈值）
-    m_algorithm->setAlgoConfig(algoCfg);
+   m_currentAlgoCfg = AlgoConfig{}; // 使用默认参数（Common.h 中的阈值）
+m_algorithm->setAlgoConfig(m_currentAlgoCfg);
     m_algorithm->setFrameProducer(m_producer);
 
     // 启动线程
@@ -481,13 +481,14 @@ void MainWindow::updateParamLabels()
     }
 
     // FI 阈值
-    ui->lblFiThresh->setText(
-        QStringLiteral("FI阈值: %1").arg(m_lastResult.fi, 0, 'f', 2));
-
+     ui->lblFiThresh->setText(
+        QStringLiteral("FI阈值: %1").arg(m_currentAlgoCfg.fiThreshold, 0, 'f', 1));
     // HotRatio 阈值
-    ui->lblHotRatioThresh->setText(
-        QStringLiteral("HotRatio阈值: %1%").arg(m_lastResult.hotRatio, 0, 'f', 1));
-
+     ui->lblHotRatioThresh->setText(
+        QStringLiteral("HotRatio阈值: %1%").arg(m_currentAlgoCfg.hotRatioThreshold, 0, 'f', 1));
+    // P95 阈值（来自 AlgoConfig，静态配置值）
+    ui->lblP95Thresh->setText(
+        QStringLiteral("P95阈值: %1").arg(m_currentAlgoCfg.p95Threshold, 0, 'f', 1));
     // 观察 ROI 信息
     if (m_observeRoiEnabled && !m_observeRoiRect.isNull())
     {

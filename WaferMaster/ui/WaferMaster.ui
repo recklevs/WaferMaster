@@ -146,15 +146,22 @@
              </property>
             </widget>
            </item>
-           <item>
-            <widget class="QLabel" name="lblHotRatioThresh">
-             <property name="text">
-              <string>HotRatio阈值: -</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="lblObserveRoiInfo">
+            <item>
+             <widget class="QLabel" name="lblHotRatioThresh">
+              <property name="text">
+               <string>HotRatio阈值: -</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblP95Thresh">
+              <property name="text">
+               <string>P95阈值: -</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblObserveRoiInfo">
              <property name="text">
               <string>观察ROI: -</string>
              </property>

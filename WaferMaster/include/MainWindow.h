@@ -236,6 +236,7 @@ private:
     RunState        m_runState    = RunState::Idle; // 当前运行状态
     SourceConfig    m_sourceConfig;                  // 当前输入源配置（从 UI 收集）
     AlgoResult      m_lastResult;                    // 最后一帧的算法结果（用于观察 ROI 裁切和状态栏刷新）
+    AlgoConfig      m_currentAlgoCfg;                // 当前算法配置（阈值，供左侧参数面板显示）
 
     // ========================================================================
     // 成员变量 — 显示状态
