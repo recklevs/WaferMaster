@@ -266,15 +266,20 @@ void MainWindow::onObserveRoiToggled(bool checked)
     m_observeRoiEnabled = checked;
 
     // 若开启且有缓存的最后一帧结果，立即刷新 ROI 小图
-    if (checked && !m_lastResult.frameOriginal.empty())
+    if (checked)
     {
-        refreshObserveRoiViews();
+        ui->lblViewOriginal->setCursor(Qt::CrossCursor);
+        if (!m_lastResult.frameOriginal.empty())
+            refreshObserveRoiViews();
     }
-    else if (!checked)
+    else
     {
-        // 关闭观察 ROI 时清空 ROI 显示区域
+        // 关闭观察 ROI：还原光标、清空 ROI 显示区域、清除原图上红框
+        ui->lblViewOriginal->setCursor(Qt::ArrowCursor);
         ui->lblRoiOriginal->clear();
         ui->lblRoiResult->clear();
+        if (!m_lastResult.frameOriginal.empty())
+            showMatOnLabel(ui->lblViewOriginal, m_lastResult.frameOriginal);
     }
 
     updateParamLabels();
@@ -402,6 +407,8 @@ void MainWindow::updateRunState(RunState state)
             ui->btnObserveRoi->blockSignals(false);
             ui->lblRoiOriginal->clear();
             ui->lblRoiResult->clear();
+            if (!m_lastResult.frameOriginal.empty())
+                showMatOnLabel(ui->lblViewOriginal, m_lastResult.frameOriginal);
         }
         break;
     case RunState::Error:
@@ -644,19 +651,12 @@ void MainWindow::drawRoiRect()
     if (!m_isSelectingObserveRoi || !m_observeRoiEnabled)
         return;
 
-    // 用归一化矩形 + QPainter 画红色虚线
-    QRect r = QRect(m_observeStartPoint, m_observeEndPoint).normalized();
-    QPixmap pix = ui->lblViewOriginal->pixmap();
-    if (pix.isNull())
-        return;
-
-    QPainter painter(&pix);
+    // QPainter 直接在 label 上绘制 overlay 矩形（不碰 pixmap，无叠加）
+    QPainter painter(ui->lblViewOriginal);
     QPen pen(Qt::red, 2, Qt::DashLine);
     painter.setPen(pen);
+    QRect r = QRect(m_observeStartPoint, m_observeEndPoint).normalized();
     painter.drawRect(r);
-    painter.end();
-
-    ui->lblViewOriginal->setPixmap(pix);
 }
 
 // 2. 事件过滤器 — 捕获鼠标框选交互（Press / Move / Release / Paint）
@@ -730,10 +730,14 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
     if (event->type() == QEvent::Paint)
     {
-        // 先让原 label 完成自己的绘制，再叠加红色虚线框
-        bool result = QMainWindow::eventFilter(watched, event);
+        // QPainter 直接在 label 上绘制（overlay，不污染 pixmap）
+        QPainter painter(ui->lblViewOriginal);
+        // ① 先画底图
+        if (!ui->lblViewOriginal->pixmap().isNull())
+            painter.drawPixmap(ui->lblViewOriginal->rect(), ui->lblViewOriginal->pixmap());
+        // ② 再画红框 overlay
         drawRoiRect();
-        return result;
+        return true; // 已自行完成绘制，阻止默认行为
     }
 
     return QMainWindow::eventFilter(watched, event);
