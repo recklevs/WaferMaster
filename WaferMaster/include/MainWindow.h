@@ -203,18 +203,9 @@ private:
     // 观察 ROI 工具函数（Phase 2）
     // ========================================================================
 
-    /// @brief 将 QLabel 上的像素坐标映射到实际图像像素坐标
-    ///        考虑 QLabel 的 scaledContents 缩放和图像原始尺寸
-    /// @param label     源 QLabel 控件指针
-    /// @param imageSize 实际图像的原始尺寸（宽×高）
-    /// @param labelRect QLabel 控件上的鼠标框选矩形（像素坐标）
-    /// @return 映射到实际图像坐标系的矩形（clamp 在图像边界内）
-    QRect mapLabelRectToImageRect(QLabel* label, const QSize& imageSize, const QRect& labelRect) const;
-
-    /// @brief 将 m_observeStartPoint / m_observeEndPoint 归一化为左上-右下矩形
-    ///        处理用户反向框选（从右下拖到左上）的情况
-    /// @return 规范化的矩形（x≤x+w, y≤y+h）
-    QRect normalizedObserveRect() const;
+    /// @brief 在原图 QLabel 上绘制观察 ROI 红色虚线框
+    ///        在 eventFilter() 的 Paint 事件中调用
+    void drawRoiRect();
 
 private:
     // ========================================================================

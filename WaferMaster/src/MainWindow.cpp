@@ -8,6 +8,8 @@
 #include <QPixmap>
 #include <QLabel>
 #include <QStatusBar>
+#include <QPainter>
+#include <QMouseEvent>
 
 // ============================================================================
 // 构造 & 析构
@@ -52,6 +54,10 @@ void MainWindow::setupUiState()
     ui->lblFiThresh->setText(QStringLiteral("FI阈值: -"));
     ui->lblHotRatioThresh->setText(QStringLiteral("HotRatio阈值: -"));
     ui->lblObserveRoiInfo->setText(QStringLiteral("观察ROI: -"));
+
+    // 为原图 QLabel 安装事件过滤器，用于观察 ROI 框选交互
+    ui->lblViewOriginal->installEventFilter(this);
+    ui->lblViewOriginal->setMouseTracking(true);
 
     // 状态栏初始文本
     if (ui->statusBar)
@@ -629,28 +635,106 @@ void MainWindow::showMatOnLabel(QLabel* label, const cv::Mat& mat) const
 }
 
 // ============================================================================
-// Phase 2 预留（当前返回空实现）
+// Phase 2 — 观察 ROI 鼠标框选（原项目 QtWidgetsApplication1 简化迁移）
 // ============================================================================
 
+// 1. 绘制红色虚线框
+void MainWindow::drawRoiRect()
+{
+    if (!m_isSelectingObserveRoi || !m_observeRoiEnabled)
+        return;
+
+    // 用归一化矩形 + QPainter 画红色虚线
+    QRect r = QRect(m_observeStartPoint, m_observeEndPoint).normalized();
+    QPixmap pix = ui->lblViewOriginal->pixmap();
+    if (pix.isNull())
+        return;
+
+    QPainter painter(&pix);
+    QPen pen(Qt::red, 2, Qt::DashLine);
+    painter.setPen(pen);
+    painter.drawRect(r);
+    painter.end();
+
+    ui->lblViewOriginal->setPixmap(pix);
+}
+
+// 2. 事件过滤器 — 捕获鼠标框选交互（Press / Move / Release / Paint）
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
-    // Phase 2 实现：鼠标框选观察 ROI
-    return QMainWindow::eventFilter(watched, event);
-}
+    if (watched != ui->lblViewOriginal || !m_observeRoiEnabled)
+        return QMainWindow::eventFilter(watched, event);
 
-QRect MainWindow::mapLabelRectToImageRect(QLabel* label, const QSize& imageSize, const QRect& labelRect) const
-{
-    Q_UNUSED(label);
-    Q_UNUSED(imageSize);
-    return labelRect; // Phase 2 实现
-}
-
-QRect MainWindow::normalizedObserveRect() const
-{
-    // Phase 2 实现
-    if (m_observeStartPoint.x() <= m_observeEndPoint.x())
+    if (event->type() == QEvent::MouseButtonPress)
     {
-        return QRect(m_observeStartPoint, m_observeEndPoint).normalized();
+        // 记录框选起点
+        QMouseEvent* me = static_cast<QMouseEvent*>(event);
+        m_isSelectingObserveRoi = true;
+        m_observeStartPoint    = me->pos();
+        m_observeEndPoint      = me->pos();
+        return true;
     }
-    return QRect();
+
+    if (event->type() == QEvent::MouseMove)
+    {
+        if (!m_isSelectingObserveRoi)
+            return true;
+        QMouseEvent* me = static_cast<QMouseEvent*>(event);
+        m_observeEndPoint = me->pos();
+        ui->lblViewOriginal->update(); // 触发 Paint 事件重绘
+        return true;
+    }
+
+    if (event->type() == QEvent::MouseButtonRelease)
+    {
+        if (!m_isSelectingObserveRoi)
+            return true;
+        m_isSelectingObserveRoi = false;
+
+        // 归一化矩形（Qt 自带 .normalized() 处理反向拖拽）
+        QRect labelRect = QRect(m_observeStartPoint, m_observeEndPoint).normalized();
+        if (labelRect.width() < 5 || labelRect.height() < 5)
+            return true; // 太小，忽略
+
+        // 坐标换算：QLabel 像素 → 原图像素
+        QPixmap pix = ui->lblViewOriginal->pixmap();
+        if (pix.isNull() || m_lastResult.frameOriginal.empty())
+            return true;
+        if (labelRect.width() < 5 || labelRect.height() < 5)
+            return true;
+
+        const QSize imgSize(m_lastResult.frameOriginal.cols,
+                            m_lastResult.frameOriginal.rows);
+        const int lblW = ui->lblViewOriginal->width();
+        const int lblH = ui->lblViewOriginal->height();
+        if (lblW == 0 || lblH == 0)
+            return true;
+
+        double ratioX = (double)imgSize.width()  / lblW;
+        double ratioY = (double)imgSize.height() / lblH;
+
+        // clamp 到图像边界
+        QRect roi;
+        roi.setX(  qBound(0, (int)(labelRect.x()      * ratioX), imgSize.width()  - 1));
+        roi.setY(  qBound(0, (int)(labelRect.y()      * ratioY), imgSize.height() - 1));
+        roi.setRight( qBound(0, (int)(labelRect.right()  * ratioX), imgSize.width()  - 1));
+        roi.setBottom(qBound(0, (int)(labelRect.bottom() * ratioY), imgSize.height() - 1));
+
+        m_observeRoiRect = roi;
+
+        // 刷新裁切小图 + 参数标签
+        refreshObserveRoiViews();
+        updateParamLabels();
+        return true;
+    }
+
+    if (event->type() == QEvent::Paint)
+    {
+        // 先让原 label 完成自己的绘制，再叠加红色虚线框
+        bool result = QMainWindow::eventFilter(watched, event);
+        drawRoiRect();
+        return result;
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }
