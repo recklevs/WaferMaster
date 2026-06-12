@@ -10,7 +10,7 @@
             "includePath": [
                 "${workspaceFolder}/WaferMaster/include",
                 "${workspaceFolder}/WaferMaster/build-vscode",
-                "${workspaceFolder}/WaferMaster/build",
+                "${workspaceFolder}/build",
                 "E:/Qt/6.10.2/msvc2022_64/include",
                 "E:/Qt/6.10.2/msvc2022_64/include/QtCore",
                 "E:/Qt/6.10.2/msvc2022_64/include/QtGui",

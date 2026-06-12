@@ -2,6 +2,7 @@
 #include "ui_WaferMaster.h"
 #include "FrameProducer.h"
 #include "WaferAlgorithm.h"
+#include "RoiViewerDialog.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -16,18 +17,18 @@
 // ============================================================================
 
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    : QMainWindow(parent), ui(new Ui::MainWindow)//创建一个 Ui::MainWindow 对象，并将其地址赋值给成员指针 ui。
 {
-    ui->setupUi(this);
-    setupUiState();
-    setupWorkers();
-    setupConnections();
+    ui->setupUi(this);//调用 ui 对象的 setupUi() 方法，传入 this 指针（MainWindow 实例），完成 UI 初始化。
+    setupUiState();//设置控件初始值
+    setupWorkers();//创建线程对象
+    setupConnections();//建立信号槽连接
 }
 
 MainWindow::~MainWindow()
 {
     cleanupWorkers();
+    delete m_roiDialog;//防御性删除，确保即使未创建也安全
     delete ui;
 }
 
@@ -58,6 +59,7 @@ void MainWindow::setupUiState()
     // 为原图 QLabel 安装事件过滤器，用于观察 ROI 框选交互
     ui->lblViewOriginal->installEventFilter(this);
     ui->lblViewOriginal->setMouseTracking(true);
+    ui->lblViewOriginal->setCursor(Qt::ArrowCursor);
 
     // 状态栏初始文本
     if (ui->statusBar)
@@ -82,7 +84,7 @@ void MainWindow::setupConnections()
     // UI 控件 → MainWindow 槽（生命周期与 MainWindow 等长，此处一次性连接）
     // ========================================================================
 
-    // 手动 connect，使用自定义槽名（非 Qt 自动连接约定）
+    // 手动 connect，使用自定义槽名
     connect(ui->btnBrowse,      &QPushButton::clicked, this, &MainWindow::onBrowseClicked);
     connect(ui->btnStart,       &QPushButton::clicked, this, &MainWindow::onStartClicked);
     connect(ui->btnStop,        &QPushButton::clicked, this, &MainWindow::onStopClicked);
@@ -102,17 +104,17 @@ void MainWindow::cleanupWorkers()
     // 先停采集再停算法，确保不再有新帧入队
     if (m_producer)
     {
-        // 跨线程调用 stop，由 Qt 排队执行
-        QMetaObject::invokeMethod(m_producer, "stop", Qt::QueuedConnection);
+        //通过 Qt 的元对象系统（QMetaObject）调用 m_producer 的 stop() 方法，使用排队执行确保跨线程调用安全
+        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop, Qt::QueuedConnection);
     }
     if (m_algorithm)
     {
-        QMetaObject::invokeMethod(m_algorithm, "stop", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop, Qt::QueuedConnection);
     }
 
     // 等待线程退出（quit() 会处理完已排队的 invokeMethod 调用再退出）
     // QTimer 驱动版 stop() 立即中断，wait(500) 绰绰有余
-    if (m_producerThread && m_producerThread->isRunning())
+    if (m_producerThread && m_producerThread->isRunning())//如果线程存在且正在运行
     {
         m_producerThread->quit();
         m_producerThread->wait(500);
@@ -122,9 +124,11 @@ void MainWindow::cleanupWorkers()
         m_algorithmThread->quit();
         m_algorithmThread->wait(500);
     }
-
-    // quit + wait 后线程已停止，直接 delete Worker 安全
-    // （Worker 亲和性在已退出的线程上，无事件循环处理 deleteLater）
+/*
+为什么 QThread 用 `deleteLater` 而 Worker 用 `delete`：
+退出2个子线程后，m_producer和 m_algorithm 已经不再运行了，但它们的线程对象 m_producerThread 和 m_algorithmThread 仍然存在（归属主线程）
+主线程的事件循环还在运行。deleteLater()把删除指令放入主线程的队列，等事件循环空闲时再执行删除，确保线程对象在安全的时机被销毁。
+*/
     delete m_producer;
     m_producer = nullptr;
     delete m_algorithm;
@@ -149,7 +153,7 @@ void MainWindow::cleanupWorkers()
 
 void MainWindow::onBrowseClicked()
 {
-    const int idx = ui->cmbSourceType->currentIndex();
+    const int idx = ui->cmbSourceType->currentIndex();//获取索引编号0/1
 
     if (idx == 0) // 图片序列 → 选文件夹
     {
@@ -170,7 +174,20 @@ void MainWindow::onBrowseClicked()
             ui->editSourcePath->setText(file);
     }
 }
-
+/*核心启动检测
+onStartClicked()
+  │
+  ├─ buildSourceConfig()        从 UI 收参
+  ├─ cleanupWorkers()           清旧资源
+  ├─ new QThread × 2            建新线程
+  ├─ new Worker × 2             建工作对象
+  ├─ moveToThread × 2           搬家
+  ├─ connect × 9                建跨线程信号链
+  ├─ setSourceConfig()          注入配置
+  ├─ setFrameProducer()         算法绑定生产者
+  ├─ thread->start() × 2        启动线程
+  └─ updateRunState(Running)    状态机切运行
+*/
 void MainWindow::onStartClicked()
 {
     // 从 UI 收参
@@ -234,10 +251,10 @@ void MainWindow::onStartClicked()
             m_algorithm,       &WaferAlgorithm::start);
 
     // 注入配置
-    m_producer->setSourceConfig(m_sourceConfig);
-   m_currentAlgoCfg = AlgoConfig{}; // 使用默认参数（Common.h 中的阈值）
-m_algorithm->setAlgoConfig(m_currentAlgoCfg);
-    m_algorithm->setFrameProducer(m_producer);
+    m_producer->setSourceConfig(m_sourceConfig);//生产者注入输入源配置
+    m_currentAlgoCfg = AlgoConfig{}; // 使用默认参数（Common.h 中的阈值）
+    m_algorithm->setAlgoConfig(m_currentAlgoCfg);//算法处理器注入算法参数配置
+    m_algorithm->setFrameProducer(m_producer);//算法处理器注入生产者指针，供拉帧使用
 
     // 启动线程
     m_producerThread->start();
@@ -257,9 +274,9 @@ void MainWindow::onObserveRoiToggled(bool checked)
     // Running 时禁止切换观察 ROI，恢复按钮状态
     if (m_runState == RunState::Running)
     {
-        ui->btnObserveRoi->blockSignals(true);
-        ui->btnObserveRoi->setChecked(m_observeRoiEnabled);
-        ui->btnObserveRoi->blockSignals(false);
+        ui->btnObserveRoi->blockSignals(true);// 暂时阻断信号
+        ui->btnObserveRoi->setChecked(m_observeRoiEnabled);// 恢复按钮状态
+        ui->btnObserveRoi->blockSignals(false);// 重新连接信号
         return;
     }
 
@@ -274,10 +291,10 @@ void MainWindow::onObserveRoiToggled(bool checked)
     }
     else
     {
-        // 关闭观察 ROI：还原光标、清空 ROI 显示区域、清除原图上红框
+        // 关闭观察 ROI：还原光标、清除原图上红框、关闭弹窗
         ui->lblViewOriginal->setCursor(Qt::ArrowCursor);
-        ui->lblRoiOriginal->clear();
-        ui->lblRoiResult->clear();
+        if (m_roiDialog)
+            m_roiDialog->close();
         if (!m_lastResult.frameOriginal.empty())
             showMatOnLabel(ui->lblViewOriginal, m_lastResult.frameOriginal);
     }
@@ -346,7 +363,7 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
     // 若观察 ROI 已启用且框选有效，刷新 ROI 小图
     if (m_observeRoiEnabled && !m_observeRoiRect.isNull())
         refreshObserveRoiViews();
-}
+}//Algorithm每处理完一帧后，都会调用这个槽函数来更新界面显示和状态栏信息。
 
 void MainWindow::onWorkerError(const QString& message)
 {
@@ -355,7 +372,7 @@ void MainWindow::onWorkerError(const QString& message)
 
 void MainWindow::onProducerFinished()
 {
-    // 采集线程结束，不做额外操作（由 onStopClicked 统一处理状态切换）
+    // 空函数。finished 信号已连接到 thread->quit()，线程退出由 cleanupWorkers 统一管理
 }
 
 void MainWindow::onAlgorithmFinished()
@@ -372,13 +389,9 @@ SourceConfig MainWindow::buildSourceConfig() const
     SourceConfig cfg;
 
     const int idx = ui->cmbSourceType->currentIndex();
-    cfg.sourceType = (idx == 0) ? InputSourceType::ImageSequence
-                                : InputSourceType::AviVideo;
-    cfg.sourcePath = ui->editSourcePath->text().trimmed();
-
-    // 帧间隔暂用默认值 33ms，不从 UI 读取
-    // cfg.frameIntervalMs 保持 Common.h 中定义的 33
-
+    cfg.sourceType = (idx == 0) ? InputSourceType::ImageSequence//三元运算符：idx==0 → ImageSequence
+                          : InputSourceType::AviVideo;//idx!=0 → AviVideo
+    cfg.sourcePath = ui->editSourcePath->text().trimmed();//获取输入路径，trimmed()去除首尾空白
     return cfg;
 }
 
@@ -405,8 +418,8 @@ void MainWindow::updateRunState(RunState state)
             ui->btnObserveRoi->blockSignals(true);
             ui->btnObserveRoi->setChecked(false);
             ui->btnObserveRoi->blockSignals(false);
-            ui->lblRoiOriginal->clear();
-            ui->lblRoiResult->clear();
+            if (m_roiDialog)
+                m_roiDialog->close();
             if (!m_lastResult.frameOriginal.empty())
                 showMatOnLabel(ui->lblViewOriginal, m_lastResult.frameOriginal);
         }
@@ -417,13 +430,12 @@ void MainWindow::updateRunState(RunState state)
         ui->btnBrowse->setEnabled(true);
         break;
     }
-
     updateStatusBarText();
 }
 
 void MainWindow::updateStatusBarText()
 {
-    if (!ui->statusBar)
+    if (!ui->statusBar)//防御：如果.ui文件里没放 QStatusBar，直接返回
         return;
 
     QString text;
@@ -532,34 +544,30 @@ void MainWindow::refreshMainViews(const AlgoResult& result)
 void MainWindow::refreshObserveRoiViews()
 {
     if (!m_observeRoiEnabled || m_observeRoiRect.isNull())
-        return;
+        return;//// 观察 ROI 没开，或者还没框选，什么都不做
 
     // 从 m_lastResult 中裁切
     const QRect& r = m_observeRoiRect;
 
-    // 原图 ROI
-    if (!m_lastResult.frameOriginal.empty())
+    // 推送到独立弹窗（若存在）
+    if (m_roiDialog)
     {
-        cv::Rect roi(r.x(), r.y(), r.width(), r.height());
-        // 边界保护
-        roi &= cv::Rect(0, 0, m_lastResult.frameOriginal.cols, m_lastResult.frameOriginal.rows);
-        if (roi.width > 0 && roi.height > 0)
+        QImage imgOrig, imgFlat;
+        if (!m_lastResult.frameOriginal.empty())
         {
-            cv::Mat cropped = m_lastResult.frameOriginal(roi).clone();
-            showMatOnLabel(ui->lblRoiOriginal, cropped);
+            cv::Rect roiOrig(r.x(), r.y(), r.width(), r.height());//QRect → cv::Rect 转换
+            roiOrig &= cv::Rect(0, 0, m_lastResult.frameOriginal.cols, m_lastResult.frameOriginal.rows);//求两个矩形交集
+            if (roiOrig.width > 0 && roiOrig.height > 0)
+                imgOrig = cvMatToQImage(m_lastResult.frameOriginal(roiOrig));
         }
-    }
-
-    // 平坦图 ROI（结果图）
-    if (!m_lastResult.frameFlatness.empty())
-    {
-        cv::Rect roi(r.x(), r.y(), r.width(), r.height());
-        roi &= cv::Rect(0, 0, m_lastResult.frameFlatness.cols, m_lastResult.frameFlatness.rows);
-        if (roi.width > 0 && roi.height > 0)
+        if (!m_lastResult.frameFlatness.empty())
         {
-            cv::Mat cropped = m_lastResult.frameFlatness(roi).clone();
-            showMatOnLabel(ui->lblRoiResult, cropped);
+            cv::Rect roiFlat(r.x(), r.y(), r.width(), r.height());
+            roiFlat &= cv::Rect(0, 0, m_lastResult.frameFlatness.cols, m_lastResult.frameFlatness.rows);
+            if (roiFlat.width > 0 && roiFlat.height > 0)
+                imgFlat = cvMatToQImage(m_lastResult.frameFlatness(roiFlat));
         }
+        m_roiDialog->setImages(imgOrig, imgFlat);
     }
 }
 
@@ -577,7 +585,7 @@ QImage MainWindow::cvMatToQImage(const cv::Mat& mat) const
     switch (mat.type())
     {
     case CV_8UC3:
-        // BGR → RGB
+        // OpenCV 默认 BGR 排列，QImage::Format_BGR888 告诉 Qt 直接按 BGR 数据创建，无需再转 RGB
         img = QImage(mat.data, mat.cols, mat.rows, static_cast<int>(mat.step),
                      QImage::Format_BGR888).copy();
         break;
@@ -585,15 +593,15 @@ QImage MainWindow::cvMatToQImage(const cv::Mat& mat) const
         img = QImage(mat.data, mat.cols, mat.rows, static_cast<int>(mat.step),
                      QImage::Format_Grayscale8).copy();
         break;
-    default:
+    default://其他类型，如 CV_32F、CV_16U 等，QImage 不直接支持，需要先转换
     {
         // 尝试将其他类型转为 8UC3
         cv::Mat tmp;
         if (mat.channels() == 1)
-            mat.convertTo(tmp, CV_8UC1, 1.0, 0);
+            mat.convertTo(tmp, CV_8UC1, 1.0, 0);//tmp(x,y) = mat(x,y) * alpha + beta
         else
         {
-            cv::cvtColor(mat, tmp, cv::COLOR_BGR2RGB);
+            cv::cvtColor(mat, tmp, cv::COLOR_BGR2RGB);//先BGR转 RGB，再转 8UC3
             tmp.convertTo(tmp, CV_8UC3, 1.0, 0);
         }
         if (!tmp.empty())
@@ -642,7 +650,7 @@ void MainWindow::showMatOnLabel(QLabel* label, const cv::Mat& mat) const
 }
 
 // ============================================================================
-// Phase 2 — 观察 ROI 鼠标框选（原项目 QtWidgetsApplication1 简化迁移）
+//  观察 ROI 鼠标框选
 // ============================================================================
 
 // 1. 绘制红色虚线框
@@ -722,9 +730,12 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
         m_observeRoiRect = roi;
 
-        // 刷新裁切小图 + 参数标签
+        // 先确保弹窗已创建，再刷新裁切图（保证首次框选即可看到图片）
+        if (!m_roiDialog)
+            m_roiDialog = new RoiViewerDialog(this);
         refreshObserveRoiViews();
         updateParamLabels();
+        m_roiDialog->show();
         return true;
     }
 

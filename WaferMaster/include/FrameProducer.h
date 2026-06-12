@@ -51,11 +51,11 @@ public:
 public slots:
     /**  @brief 生产者：启动采集循环（跨线程信号槽触发）
     内部流程：
-       1. 根据 m_config.sourceType 走 AVI 或图片序列分支
-       2. 打开源后发射 sourceInfoReady(路径, 分辨率)
-       3. 循环读取帧 → enqueueFrame() 入队
-       4. 退出循环后发射 finished()
-       5. 异常发生时发射 errorOccurred(msg)*/
+    1. 根据 m_config.sourceType 走 AVI 或图片序列分支
+    2. 打开源后发射 sourceInfoReady(路径, 分辨率)
+    3. 创建 QTimer → connect(timeout → tick()) → timer->start(帧间隔)
+    4. 采集结束（视频播完/图片读完）时 tick() 内部发射 finished()
+    5. 异常发生时发射 errorOccurred(msg)*/
     void start();
 
     /// @brief 停止采集循环（跨线程信号槽触发）
@@ -63,7 +63,7 @@ public slots:
     void stop();
 
 private slots:
-    /// @brief QTimer 每次触发时读一帧（AVI: cap.read, 图片: imread）
+    /// @brief QTimer内部调用 每次触发时读一帧（AVI: cap.read, 图片: imread）
     ///        读到空/读完 → m_timer->stop() → cap.release() → emit finished()
     void tick();
 

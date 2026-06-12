@@ -12,9 +12,10 @@
 class QLabel;
 class FrameProducer;
 class WaferAlgorithm;
+class RoiViewerDialog;
 
 namespace Ui {
-class MainWindow;
+class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
 }
 
 /**  @brief 表现层：主窗口，负责线程编排、显示刷新、状态管理、观察 ROI 交互
@@ -22,7 +23,7 @@ class MainWindow;
 
 ## MainWindow 工作流程
 
-### Phase 1 主链路
+###  主链路
  1. 构造 → setupUiState() 初始化 UI 控件初始状态
  2. setupWorkers() 创建 FrameProducer + WaferAlgorithm + QThread（无父对象）
  3. setupConnections() 建立信号槽连接（采集→算法→显示）
@@ -31,7 +32,7 @@ class MainWindow;
                                          → updateStatusBarText()
  6. 用户点击"停止检测" → onStopClicked() → 停止线程 → cleanupWorkers()
 
-### Phase 2 观察 ROI
+###  观察 ROI
  7. eventFilter() 在原图 QLabel 上捕获鼠标框选交互
  8. mapLabelRectToImageRect() 将 QLabel 像素坐标映射到实际图像像素坐标
  9. refreshObserveRoiViews() 裁出 ROI 原图 + ROI 结果图
@@ -55,7 +56,7 @@ public:
     ~MainWindow();
 
 protected:
-    /// @brief 事件过滤器：在 Phase 2 中实现原图 QLabel 上的鼠标框选交互
+    /// @brief 事件过滤器：实现原图 QLabel 上的鼠标框选交互
     ///        捕获 mousePress / mouseMove / mouseRelease 事件，实时更新观察 ROI
     /// @param watched 被监视的 QObject（QWidget）
     /// @param event   待处理的事件
@@ -64,7 +65,7 @@ protected:
 
 private slots:
     // ========================================================================
-    // UI 交互槽
+    // UI 12个交互槽函数
     // ========================================================================
 
     /// @brief 浏览按钮：根据输入源类型弹出文件/文件夹选择对话框
@@ -124,7 +125,7 @@ private slots:
 
 private:
     // ========================================================================
-    // 初始化和清理
+    // 初始化和清理（4）
     // ========================================================================
 
     /// @brief 设置 UI 控件初始状态：按钮启用/禁用、状态栏默认文本、观察 ROI 初始关闭
@@ -149,7 +150,7 @@ private:
     void cleanupWorkers();
 
     // ========================================================================
-    // 配置与状态
+    // 配置与状态（4）
     // ========================================================================
 
     /// @brief 从 UI 控件收集当前参数，构造 SourceConfig
@@ -164,9 +165,12 @@ private:
 
     /// @brief 更新状态栏文本：路径、分辨率、帧号、FI、P95、HotRatio、Level、运行状态
     void updateStatusBarText();
-
+    
+    /// @brief 刷新参数显示标签：lblAlgoRoi / lblFiThresh / lblHotRatioThresh / lblObserveRoiInfo
+    ///        在 onAlgorithmResultReady() 和 slider 变化时调用
+    void updateParamLabels();
     // ========================================================================
-    // 显示刷新
+    // 显示刷新（2）
     // ========================================================================
 
     /// @brief 刷新三张主图显示：原图、频谱图、平坦图
@@ -179,12 +183,8 @@ private:
     ///        从 m_lastResult.frameOriginal / frameFlatness 按 m_observeRoiRect 裁出
     void refreshObserveRoiViews();
 
-    /// @brief 刷新参数显示标签：lblAlgoRoi / lblFiThresh / lblHotRatioThresh / lblObserveRoiInfo
-    ///        在 onAlgorithmResultReady() 和 slider 变化时调用
-    void updateParamLabels();
-
     // ========================================================================
-    // 图像工具函数
+    // 图像工具函数（2）
     // ========================================================================
 
     /// @brief 将 OpenCV cv::Mat 转换为 Qt QImage（BGR → RGB 色彩通道转换）
@@ -200,14 +200,13 @@ private:
     void showMatOnLabel(QLabel* label, const cv::Mat& mat) const;
 
     // ========================================================================
-    // 观察 ROI 工具函数（Phase 2）
+    // 观察 ROI 工具函数
     // ========================================================================
 
     /// @brief 在原图 QLabel 上绘制观察 ROI 红色虚线框
     ///        在 eventFilter() 的 Paint 事件中调用
     void drawRoiRect();
 
-private:
     // ========================================================================
     // 成员变量 — UI
     // ========================================================================
@@ -238,11 +237,16 @@ private:
     int             m_contrast   = 0;    // 对比度调整值（sliderContrast 当前值）
 
     // ========================================================================
-    // 成员变量 — 观察 ROI（Phase 2）
+    // 成员变量 — 观察 ROI
     // ========================================================================
     bool   m_observeRoiEnabled     = false; // 观察 ROI 功能开关（由 CheckBox 控制）
     bool   m_isSelectingObserveRoi = false; // 是否正在框选观察 ROI（鼠标按下后未释放）
     QPoint m_observeStartPoint;            // 观察 ROI 框选起点（QLabel 像素坐标）
     QPoint m_observeEndPoint;              // 观察 ROI 框选终点（QLabel 像素坐标）
     QRect  m_observeRoiRect;              // 最终的观察 ROI 矩形（经 normalize + clamp 处理）
+
+    // ========================================================================
+    // 成员变量 — ROI 弹窗
+    // ========================================================================
+    RoiViewerDialog* m_roiDialog = nullptr; // 观察 ROI 独立弹窗（框选完成后弹出）
 };

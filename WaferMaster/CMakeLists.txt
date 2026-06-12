@@ -29,6 +29,7 @@ set(SOURCES
     src/WaferAlgorithm.cpp
     src/FrameProducer.cpp
     src/MainWindow.cpp
+    src/RoiViewerDialog.cpp
 )
 
 set(HEADERS
@@ -36,6 +37,7 @@ set(HEADERS
     include/WaferAlgorithm.h
     include/FrameProducer.h
     include/MainWindow.h
+    include/RoiViewerDialog.h
 )
 
 set(UIS

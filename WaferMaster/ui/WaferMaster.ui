@@ -205,42 +205,6 @@
         </layout>
        </widget>
       </item>
-      <item row="1" column="2">
-       <layout class="QVBoxLayout" name="verticalLayout_6">
-        <item>
-         <widget class="QGroupBox" name="groupRoiSrc">
-          <property name="title">
-           <string>ROI原图</string>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_11">
-           <item>
-            <widget class="QLabel" name="lblRoiOriginal">
-             <property name="text">
-              <string>ROI原图显示区</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="groupRoiDst">
-          <property name="title">
-           <string>ROI结果图</string>
-          </property>
-          <layout class="QVBoxLayout" name="verticalLayout_10">
-           <item>
-            <widget class="QLabel" name="lblRoiResult">
-             <property name="text">
-              <string>ROI结果图显示区</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-       </layout>
-      </item>
       <item row="1" column="0">
        <widget class="QGroupBox" name="groupFlatness">
         <property name="title">

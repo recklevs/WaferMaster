@@ -32,7 +32,7 @@ void FrameProducer::setSourceConfig(const SourceConfig& config)
 
 bool FrameProducer::tryDequeueFrame(FramePacket& packet)
 {
-    QMutexLocker locker(&m_queueMutex);//自动加锁，离开作用域自动解锁
+    QMutexLocker locker(&m_queueMutex);//自动加锁，离开作用域自动解锁，与 `enqueueFrame` 共享同一把 `m_queueMutex`
 
     if (m_frameQueue.isEmpty())
         return false;
@@ -105,8 +105,9 @@ void FrameProducer::start()
 
     // 创建 QTimer（this 作为父对象）
     m_timer = new QTimer(this);
-    connect(m_timer, &QTimer::timeout, this, &FrameProducer::tick);
     m_timer->start(m_config.frameIntervalMs);
+    connect(m_timer, &QTimer::timeout, this, &FrameProducer::tick);
+    //启动定时器，每 33ms 发射一次 timeout 信号，触发一次 tick()
 }
 
 // ============================================================================
@@ -128,7 +129,7 @@ void FrameProducer::tick()
     if (m_config.sourceType == InputSourceType::AviVideo)
     {
         // ---- AVI 视频：读一帧 ----
-        m_cap.read(frame);
+        m_cap.read(frame);//读帧自动存入frame
         if (frame.empty())
         {
             // 视频播放完毕，自然结束
@@ -161,12 +162,12 @@ void FrameProducer::tick()
             return;
         }
 
-        ts = QDateTime::currentMSecsSinceEpoch();
+        ts = QDateTime::currentMSecsSinceEpoch();//图片序列没有内置时间戳，使用当前系统时间模拟
         frameIdx = m_nextImageIndex;
         ++m_nextImageIndex;
     }
 
-    enqueueFrame(frame, frameIdx, ts);
+    enqueueFrame(frame, frameIdx, ts);//把读到的帧数据放入队列，供算法线程取用
 }
 
 // ============================================================================
