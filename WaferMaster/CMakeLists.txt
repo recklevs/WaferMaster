@@ -30,6 +30,7 @@ set(SOURCES
     src/FrameProducer.cpp
     src/MainWindow.cpp
     src/RoiViewerDialog.cpp
+    src/Logger.cpp
 )
 
 set(HEADERS

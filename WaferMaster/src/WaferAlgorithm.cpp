@@ -2,9 +2,11 @@
 #include "FrameProducer.h"
 
 #include <opencv2/opencv.hpp>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <chrono>
 
 // ============================================================================
 // 构造 / 析构
@@ -46,7 +48,7 @@ void WaferAlgorithm::processPendingFrames()
 {
     if (!m_producer)
     {
-        emit errorOccurred(QStringLiteral("FrameProducer 未设置"));
+        emit errorOccurred(QStringLiteral("FrameProducer not set"));
         return;
     }
 
@@ -56,7 +58,19 @@ void WaferAlgorithm::processPendingFrames()
         if (!m_producer->tryDequeueFrame(packet))
             break;   // 队列空，直接返回
 
+        auto t0 = std::chrono::steady_clock::now();
         AlgoResult result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+        auto t1 = std::chrono::steady_clock::now();
+
+        auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        Logger::get()->debug("Frame #{} processed in {} us, FI={:.2f}, HotRatio={:.2f}%, Level={}",
+            packet.frameIdx, elapsedUs, result.fi, result.hotRatio,
+            detectionLevelToString(result.level).toStdString());
+
+        if (result.level == DetectionLevel::Ng)
+            Logger::get()->warn("NG Frame #{}: FI={:.2f}, P95={:.2f}, HotRatio={:.2f}%",
+                packet.frameIdx, result.fi, result.p95, result.hotRatio);
+
         emit resultReady(result);
     }
 }
@@ -77,6 +91,8 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
     result.frameIdx    = frameIdx;
     result.timestampMs = timestampMs;
 
+    try
+    {
     // 保存原图副本（UI 显示用，clone 确保独立所有权）
     result.frameOriginal = frame.clone();
 
@@ -197,6 +213,13 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
                 cv::FONT_HERSHEY_SIMPLEX, 0.7, levelColor, 2);
 
     result.frameFlatness = flatness;
+
+    }
+    catch (const std::exception& e)
+    {
+        Logger::get()->error("Frame #{} algorithm exception: {}", frameIdx, e.what());
+        // 返回部分填充的结果（frameOriginal 已 clone 在外层捕获前）
+    }
 
     return result;
 }

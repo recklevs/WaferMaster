@@ -188,7 +188,6 @@ private:
     // ========================================================================
 
     /// @brief 将 OpenCV cv::Mat 转换为 Qt QImage（BGR → RGB 色彩通道转换）
-    ///        参考 QtWidgetsApplication1 的转换逻辑
     /// @param mat 输入 OpenCV 图像（支持 CV_8UC1 / CV_8UC3）
     /// @return Qt 可显示的 QImage，若输入为空则返回空 QImage
     QImage cvMatToQImage(const cv::Mat& mat) const;

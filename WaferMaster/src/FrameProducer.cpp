@@ -6,6 +6,7 @@
 #include <QMutexLocker>
 #include <QThread>
 #include <opencv2/opencv.hpp>
+#include <spdlog/spdlog.h>
 
 // ============================================================================
 // 构造 / 析构
@@ -49,6 +50,10 @@ void FrameProducer::start()
 {
     m_running = true;
 
+    Logger::get()->info("Producer started, source: {}, path: {}",
+        m_config.sourceType == InputSourceType::AviVideo ? "AVI" : "ImageSequence",
+        m_config.sourcePath.toStdString());
+
     if (m_config.sourceType == InputSourceType::AviVideo)
     {
         // ---- AVI 视频分支 ----
@@ -56,7 +61,8 @@ void FrameProducer::start()
 
         if (!m_cap.isOpened())
         {
-            emit errorOccurred(QStringLiteral("无法打开视频文件：%1").arg(m_config.sourcePath));
+            Logger::get()->error("Cannot open video file: {}", m_config.sourcePath.toStdString());
+            emit errorOccurred(QStringLiteral("Cannot open video file: %1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
@@ -72,7 +78,7 @@ void FrameProducer::start()
         QDir dir(m_config.sourcePath);//QDir是 Qt 的目录操作类
         if (!dir.exists())
         {
-            emit errorOccurred(QStringLiteral("目录不存在：%1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("Directory not found: %1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
@@ -90,7 +96,7 @@ void FrameProducer::start()
 
         if (m_imageFiles.isEmpty())
         {
-            emit errorOccurred(QStringLiteral("目录中无图片文件：%1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("No image files in: %1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
@@ -198,6 +204,7 @@ void FrameProducer::stop()
     // 清空图片列表
     m_imageFiles.clear();
 
+    Logger::get()->info("Producer stopped, total frames: {}", m_nextImageIndex);
     emit finished();
 }
 

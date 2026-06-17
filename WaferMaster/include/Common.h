@@ -120,3 +120,26 @@ inline QColor levelToColor(DetectionLevel level)
 // Qt 元类型注册声明（跨线程信号槽传参必需）
 // ============================================================================
 Q_DECLARE_METATYPE(AlgoResult)
+
+// ============================================================================
+// 日志系统：全局 Logger 单例
+// ============================================================================
+
+#include <memory>
+
+// 前置声明，避免头文件污染（实际 include 放在 Logger.cpp 里）
+namespace spdlog { class logger; }
+
+class Logger
+{
+public:
+    /// 初始化日志系统（main 中最先调用）
+    /// @param logDir 日志文件存放目录，默认 "logs"
+    static void init(const QString& logDir = QStringLiteral("logs"));
+
+    /// 获取全局 logger 实例（初始化后才能调用）
+    static std::shared_ptr<spdlog::logger> get();
+
+private:
+    static std::shared_ptr<spdlog::logger> s_logger;
+};
