@@ -123,6 +123,9 @@ private slots:
     /// @brief 算法线程 finished 信号 → 更新运行状态，检查是否两个线程都已完成
     void onAlgorithmFinished();
 
+    /// @brief 接收 QtLogBridge 信号 → 追加到 plainTextEditLog
+    void onLogMessage(const QString& message);
+
 private:
     // ========================================================================
     // 初始化和清理（4）

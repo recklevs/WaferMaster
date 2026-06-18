@@ -17,7 +17,9 @@ find_package(OpenCV REQUIRED)
 set(CMAKE_PREFIX_PATH "E:/Qt/6.10.2/msvc2022_64")
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network)
 
-# 引入 spdlog (本地源码，v1.14.1)
+# 引入 spdlog (本地源码 v1.14.1)
+# spdlog 源码放在项目根目录 spdlog/ 下，cmake 会自动编译成静态库 spdlog::spdlog
+# 第二个参数指定外部项目的二进制输出目录，避免污染主构建目录根层
 add_subdirectory(${CMAKE_SOURCE_DIR}/spdlog ${CMAKE_BINARY_DIR}/spdlog_build)
 
 # 定义包含路径
@@ -39,6 +41,7 @@ set(HEADERS
     include/FrameProducer.h
     include/MainWindow.h
     include/RoiViewerDialog.h
+    include/Logger.h 
 )
 
 set(UIS

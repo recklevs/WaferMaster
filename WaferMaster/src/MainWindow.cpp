@@ -3,6 +3,7 @@
 #include "FrameProducer.h"
 #include "WaferAlgorithm.h"
 #include "RoiViewerDialog.h"
+#include "Logger.h"
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -95,6 +96,15 @@ void MainWindow::setupConnections()
 
     connect(ui->sliderBright,   &QSlider::valueChanged, this, &MainWindow::onBrightnessChanged);
     connect(ui->sliderContrast, &QSlider::valueChanged, this, &MainWindow::onContrastChanged);
+
+    // QtLogBridge → 日志控件（Logger::init() 已创建 QtLogBridge）
+    QtLogBridge* bridge = Logger::getBridge();
+    if (bridge)
+    {
+        connect(bridge, &QtLogBridge::logMessage, this, [this](const QString& msg) {
+            ui->plainTextEditLog->appendPlainText(msg);
+        });
+    }
 
     // 跨线程 Worker 连接由 onStartClicked() 全量重建，此处不连接
 }
@@ -378,6 +388,12 @@ void MainWindow::onProducerFinished()
 void MainWindow::onAlgorithmFinished()
 {
     // 算法线程结束，不做额外操作
+}
+
+void MainWindow::onLogMessage(const QString& message)
+{
+    if (ui->plainTextEditLog)
+        ui->plainTextEditLog->appendPlainText(message);
 }
 
 // ============================================================================
