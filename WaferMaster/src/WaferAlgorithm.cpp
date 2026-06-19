@@ -55,18 +55,19 @@ void WaferAlgorithm::processPendingFrames()
     FramePacket packet;
     while (m_running)
     {
+        // 从队列取一帧非阻塞
         if (!m_producer->tryDequeueFrame(packet))
             break;   // 队列空，直接返回
-
+        // 计时：精确测量这一帧的纯算法耗时 
         auto t0 = std::chrono::steady_clock::now();
         AlgoResult result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);
         auto t1 = std::chrono::steady_clock::now();
-
         auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        // 日志调用 1：debug 级别 — 每帧性能快照
         Logger::get()->debug("Frame #{} processed in {} us, FI={:.2f}, HotRatio={:.2f}%, Level={}",
             packet.frameIdx, elapsedUs, result.fi, result.hotRatio,
             detectionLevelToString(result.level).toStdString());
-
+        // 日志调用 2：warn 级别 — NG 帧告警
         if (result.level == DetectionLevel::Ng)
             Logger::get()->warn("NG Frame #{}: FI={:.2f}, P95={:.2f}, HotRatio={:.2f}%",
                 packet.frameIdx, result.fi, result.p95, result.hotRatio);

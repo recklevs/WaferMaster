@@ -18,9 +18,9 @@ class QtLogBridge : public QObject
 {
     Q_OBJECT
 public:
-    /// @brief 构造桥接器
-    /// @param parent 父 QObject（通常为 Logger 单例持有）
+    /// @brief 构造桥接器，/// parent = nullptr：不由父 QObject 自动析构，生命周期由 Logger::s_bridge 手动管理
     explicit QtLogBridge(QObject* parent = nullptr) : QObject(parent) {}
+
 signals:
     /// @brief 收到一条格式化后的日志消息，由 MainWindow 连接以追加到日志控件
     /// @param message 格式化后的日志文本（含时间戳、级别、内容）
@@ -34,24 +34,24 @@ signals:
 /** @brief 自定义 spdlog sink：在 sink_it_() 中格式化日志消息，
            通过 QMetaObject::invokeMethod（QueuedConnection）跨线程投递到 QtLogBridge
 */
-class QtLogSink : public spdlog::sinks::base_sink<std::mutex>
+class QtLogSink : public spdlog::sinks::base_sink<std::mutex>//继承自spdlog的日志输出目标模板，使用 std::mutex 保护线程安全
 {
 public:
     /// @brief 构造 sink，绑定到指定 QtLogBridge
     /// @param bridge 目标桥接器指针（由 Logger::init() 创建并传入）
-    explicit QtLogSink(QtLogBridge* bridge) : m_bridge(bridge) {}
+    explicit QtLogSink(QtLogBridge* bridge) : m_bridge(bridge) {}//创建 QtLogSink 对象时接收一个 QtLogBridge* 指针，把它保存到成员变量 m_bridge 中
 
 protected:
     /// @brief spdlog 回调：收到一条日志消息时调用
     ///        内部格式化后通过 QueuedConnection 投递到 m_bridge
     /// @param msg spdlog 日志消息结构体（含级别、时间戳、负载文本）
-    void sink_it_(const spdlog::details::log_msg& msg) override;
-
-    /// @brief spdlog 回调：刷新缓冲区（本实现为空，无需手动刷新）
+    void sink_it_(const spdlog::details::log_msg& msg) override;//重写 base_sink 的纯虚函数 sink_it_()，当 spdlog 需要输出一条日志时会调用这个函数
+     //spdlog::details::log_msg 是 spdlog 内部定义的一个结构体，包含了日志消息的各种信息
+    /// @brief spdlog 回调：（本实现为空，不需要刷新，但父类是 = 0（纯虚），不写编译不过）
     void flush_() override {}
 
 private:
-    QtLogBridge* m_bridge = nullptr;  ///< 绑定的 QtLogBridge 实例
+    QtLogBridge* m_bridge = nullptr;  //绑定的 QtLogBridge 实例
 };
 
 // ============================================================================
@@ -64,24 +64,17 @@ private:
      - Console sink：带颜色，开发调试用
      - Rotating file sink：按大小滚动（默认 5MB × 3 个文件），持久化存储
      - Qt UI sink：通过 QtLogSink → QtLogBridge 跨线程投递到 MainWindow 日志控件
-
-    ## 使用方式
-     @code
-     Logger::init("logs");                           // 程序启动时调用一次
-     auto log = Logger::get();
-     log->info("检测开始，帧率: {} fps", fps);         // 任何线程安全调用
-     @endcode
 */
-class Logger
+class Logger//全员static，不需实例化，全局单例
 {
 public:
     /// @brief 初始化全局日志器（程序启动时调用一次）
     ///        创建控制台 sink、文件 sink、Qt UI sink 并组装到 spdlog::logger
-    /// @param logDir 日志文件存放目录（相对于工作目录，默认 "logs"）
+    /// @param logDir 日志文件存放目录（若不传参默认保存logs目录）
     static void init(const QString& logDir = QStringLiteral("logs"));
 
     /// @brief 获取全局 spdlog::logger 实例
-    /// @return 共享指针，任何线程均可安全调用 info/warn/error 等方法
+    /// @return 返回共享指针，任何线程均可安全调用自动销毁
     static std::shared_ptr<spdlog::logger> get();
 
     /// @brief 获取 QtLogBridge 指针，供 MainWindow::setupConnections() 连接信号
@@ -89,6 +82,6 @@ public:
     static QtLogBridge* getBridge();
 
 private:
-    static std::shared_ptr<spdlog::logger> s_logger;  ///< spdlog::logger 全局单例
-    static QtLogBridge*                    s_bridge;  ///< QtLogBridge 全局单例（主线程驻留）
+    static std::shared_ptr<spdlog::logger> s_logger;  ///< spdlog::logger 全局单例指针
+    static QtLogBridge*                    s_bridge;  ///< QtLogBridge 全局单例指针
 };

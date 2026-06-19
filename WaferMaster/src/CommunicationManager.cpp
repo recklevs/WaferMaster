@@ -115,14 +115,24 @@ void CommunicationManager::onReadyRead()
     if (!client)
         return;
 
-    while (client->canReadLine())
+    // 全量读取所有可用数据，支持换行分隔，也支持无换行的裸命令 (NetAssist 默认不发 \n)
+    const QByteArray data = client->readAll();
+    const QList<QByteArray> lines = data.split('\n');
+
+    for (const QByteArray& rawLine : lines)
     {
-        QByteArray line = client->readLine().trimmed();
+        // 去掉尾部 \r 和首尾空白
+        QByteArray line = rawLine.trimmed();
+        // 去掉可能残留的 \r
+        if (line.endsWith('\r'))
+            line.chop(1);
+        line = line.trimmed();
+
         if (line.isEmpty())
             continue;
 
-        QString command = QString::fromUtf8(line).toUpper();
-        emit logMessage(QStringLiteral("收到命令: %1").arg(QString::fromUtf8(line)));
+        const QString command = QString::fromUtf8(line).toUpper().trimmed();
+        emit logMessage(QStringLiteral("收到命令: %1").arg(command));
         handleCommand(client, command);
     }
 }
