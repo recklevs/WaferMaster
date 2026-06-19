@@ -33,6 +33,7 @@ set(SOURCES
     src/MainWindow.cpp
     src/RoiViewerDialog.cpp
     src/Logger.cpp
+    src/CommunicationManager.cpp
 )
 
 set(HEADERS
@@ -42,6 +43,7 @@ set(HEADERS
     include/MainWindow.h
     include/RoiViewerDialog.h
     include/Logger.h 
+    include/CommunicationManager.h
 )
 
 set(UIS

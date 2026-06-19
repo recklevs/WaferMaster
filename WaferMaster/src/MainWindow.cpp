@@ -3,9 +3,11 @@
 #include "FrameProducer.h"
 #include "WaferAlgorithm.h"
 #include "RoiViewerDialog.h"
+#include "CommunicationManager.h"
 #include "Logger.h"
 
 #include <QFileDialog>
+#include <QHostAddress>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QLabel>
@@ -24,11 +26,15 @@ MainWindow::MainWindow(QWidget* parent)
     setupUiState();//设置控件初始值
     setupWorkers();//创建线程对象
     setupConnections();//建立信号槽连接
+    setupCommunication();//创建并启动 TCP 通信服务器
 }
 
 MainWindow::~MainWindow()
 {
     cleanupWorkers();
+    if (m_comm) {
+        m_comm->stopServer();
+    }
     delete m_roiDialog;//防御性删除，确保即使未创建也安全
     delete ui;
 }
@@ -107,6 +113,35 @@ void MainWindow::setupConnections()
     }
 
     // 跨线程 Worker 连接由 onStartClicked() 全量重建，此处不连接
+}
+
+void MainWindow::setupCommunication()
+{
+    // 创建并启动 TCP 通信服务器
+    m_comm = new CommunicationManager(this);
+    connect(m_comm, &CommunicationManager::startRequested,
+            this, &MainWindow::onCommStartRequested);
+    connect(m_comm, &CommunicationManager::stopRequested,
+            this, &MainWindow::onCommStopRequested);
+    connect(m_comm, &CommunicationManager::listeningStateChanged,
+            this, [this](bool listening, const QString& msg) {
+        ui->lblCommListenState->setText(
+            QStringLiteral("状态: %1").arg(listening
+                ? QStringLiteral("监听中") : msg));
+        ui->lblCommMode->setText(QStringLiteral("模式: TCP Server"));
+        ui->lblCommAddress->setText(QStringLiteral("地址: 127.0.0.1"));
+        ui->lblCommPort->setText(QStringLiteral("端口: 9000"));
+    });
+    connect(m_comm, &CommunicationManager::clientStateChanged,
+            this, [this](bool connected, int count) {
+        ui->lblCommClientState->setText(
+            QStringLiteral("客户端: %1").arg(connected
+                ? QStringLiteral("%1个已连接").arg(count)
+                : QStringLiteral("未连接")));
+    });
+    connect(m_comm, &CommunicationManager::logMessage,
+            this, &MainWindow::onLogMessage);
+    m_comm->startServer(QHostAddress::LocalHost, 9000);
 }
 
 void MainWindow::cleanupWorkers()
@@ -373,6 +408,10 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
     // 若观察 ROI 已启用且框选有效，刷新 ROI 小图
     if (m_observeRoiEnabled && !m_observeRoiRect.isNull())
         refreshObserveRoiViews();
+
+    // 通知通信层最新结果
+    if (m_comm)
+        m_comm->updateLatestStatus(m_runState, result);
 }//Algorithm每处理完一帧后，都会调用这个槽函数来更新界面显示和状态栏信息。
 
 void MainWindow::onWorkerError(const QString& message)
@@ -394,6 +433,28 @@ void MainWindow::onLogMessage(const QString& message)
 {
     if (ui->plainTextEditLog)
         ui->plainTextEditLog->appendPlainText(message);
+}
+
+// ============================================================================
+// 通信层槽函数
+// ============================================================================
+
+void MainWindow::onCommStartRequested()
+{
+    // 仅在 Idle 或 Stopped 状态执行，避免重复启动
+    if (m_runState == RunState::Idle || m_runState == RunState::Stopped)
+    {
+        onStartClicked();
+    }
+}
+
+void MainWindow::onCommStopRequested()
+{
+    // 仅在 Running 状态执行
+    if (m_runState == RunState::Running)
+    {
+        onStopClicked();
+    }
 }
 
 // ============================================================================
@@ -446,6 +507,11 @@ void MainWindow::updateRunState(RunState state)
         ui->btnBrowse->setEnabled(true);
         break;
     }
+
+    // 通知通信层状态变更
+    if (m_comm)
+        m_comm->updateLatestStatus(state, m_lastResult);
+
     updateStatusBarText();
 }
 

@@ -13,6 +13,7 @@ class QLabel;
 class FrameProducer;
 class WaferAlgorithm;
 class RoiViewerDialog;
+class CommunicationManager;
 
 namespace Ui {
 class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
@@ -126,6 +127,16 @@ private slots:
     /// @brief 接收 QtLogBridge 信号 → 追加到 plainTextEditLog
     void onLogMessage(const QString& message);
 
+    // ========================================================================
+    // TCP通信层槽函数 
+    // ========================================================================
+
+    /// @brief TCP 客户端发送 START → 等价执行 onStartClicked()
+    void onCommStartRequested();
+
+    /// @brief TCP 客户端发送 STOP → 等价执行 onStopClicked()
+    void onCommStopRequested();
+
 private:
     // ========================================================================
     // 初始化和清理（4）
@@ -147,6 +158,9 @@ private:
     ///           errorOccurred → onWorkerError
     ///           finished → onProducerFinished / onAlgorithmFinished
     void setupConnections();
+
+    /// @brief 初始化 TCP 通信层：创建 CommunicationManager、连接信号槽、启动服务
+    void setupCommunication();
 
     /// @brief 安全停止线程并释放资源（quit → wait → deleteLater）
     ///        先停 FrameProducer 再停 WaferAlgorithm，确保不再有新帧入队
@@ -251,4 +265,9 @@ private:
     // 成员变量 — ROI 弹窗
     // ========================================================================
     RoiViewerDialog* m_roiDialog = nullptr; // 观察 ROI 独立弹窗（框选完成后弹出）
+
+    // ========================================================================
+    // 成员变量 — 通信层
+    // ========================================================================
+    CommunicationManager* m_comm = nullptr; // TCP 通信管理对象
 };
