@@ -1,13 +1,13 @@
 #pragma once
 
 #include <QObject>
-#include <QTcpServer>
-#include <QTcpSocket>
+#include <QTcpServer>//服务器类，用于监听本地端口，接收远程客户端连接
+#include <QTcpSocket>//通信类，用于服务器与客户端之间的 TCP 数据传输
 #include <QList>
 #include "Common.h"
 
 /** @brief TCP 通信管理层：监听本地端口，接收远程客户端的 START/STOP/STATUS 指令
-           ，并将当前检测状态广播给所有已连接客户端
+           ，并将当前检测状态广播给所有已连接客户端（NetAssist）
 
     ## 通信协议（纯文本，每行一条命令，UTF-8）
      - START         → 远程启动检测（等价点击"开始检测"）
@@ -83,6 +83,7 @@ signals:
 
 private slots:
     /// @brief QTcpServer 有新连接接入 → 创建 QTcpSocket 并加入 m_clients 列表
+    ///触发：m_server emit newConnection → 此函数自动执行
     void onNewConnection();
 
     /// @brief 客户端 socket 有数据到达 → 逐行读取并调用 handleCommand() 解析
@@ -115,7 +116,7 @@ private:
     // ========================================================================
 
     QTcpServer*       m_server  = nullptr;  ///< TCP 服务器实例
-    QList<QTcpSocket*> m_clients;           ///< 已连接客户端 socket 列表
+    QList<QTcpSocket*> m_clients;           ///< 记录所有当前活跃的客户端连接
     RunState  m_lastState  = RunState::Idle; ///< 最近一次缓存的运行状态
     AlgoResult m_lastResult;                 ///< 最近一次缓存的检测结果
 };

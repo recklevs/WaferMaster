@@ -14,6 +14,7 @@
 #include <QStatusBar>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QResizeEvent>
 
 // ============================================================================
 // 构造 & 析构
@@ -727,8 +728,32 @@ void MainWindow::showMatOnLabel(QLabel* label, const cv::Mat& mat) const
     if (img.isNull())
         return;
 
-    label->setPixmap(QPixmap::fromImage(img));
-    label->setScaledContents(true);
+    QPixmap pixmap = QPixmap::fromImage(img);
+    label->setPixmap(pixmap.scaled(
+        label->size(),
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation));//把图片缩放到label当前大小范围内，保持宽高比，使用平滑算法
+    label->setAlignment(Qt::AlignCenter);//居中显示
+    label->setScaledContents(false);//禁止 QLabel 自动把 pixmap 强行拉满整个控件
+}
+
+// ============================================================================
+// 窗口尺寸变化：全屏 / 恢复时重新缩放所有图像
+// ============================================================================
+
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+
+    if (!m_lastResult.frameOriginal.empty())
+    {
+        refreshMainViews(m_lastResult);
+
+        if (m_observeRoiEnabled && !m_observeRoiRect.isNull())
+            refreshObserveRoiViews();
+
+        ui->lblViewOriginal->update();
+    }
 }
 
 // ============================================================================
@@ -749,7 +774,26 @@ void MainWindow::drawRoiRect()
     painter.drawRect(r);
 }
 
-// 2. 事件过滤器 — 捕获鼠标框选交互（Press / Move / Release / Paint）
+// 2. 计算 QLabel 内 pixmap 的实际显示区域（KeepAspectRatio 居中后的矩形）
+QRect MainWindow::imageDisplayRect(QLabel* label) const
+{
+    if (!label)
+        return QRect();
+
+    const QPixmap pix = label->pixmap();
+    if (pix.isNull())
+        return QRect();
+
+    const QSize szPix = pix.size();
+    const QSize szLbl = label->size();
+
+    const int x = (szLbl.width()  - szPix.width())  / 2;
+    const int y = (szLbl.height() - szPix.height()) / 2;
+
+    return QRect(x, y, szPix.width(), szPix.height());
+}
+
+// 3. 事件过滤器 — 捕获鼠标框选交互（Press / Move / Release / Paint）
 bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched != ui->lblViewOriginal || !m_observeRoiEnabled)
@@ -786,29 +830,34 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
         if (labelRect.width() < 5 || labelRect.height() < 5)
             return true; // 太小，忽略
 
-        // 坐标换算：QLabel 像素 → 原图像素
+        // 坐标换算：QLabel 像素 → 原图像素（通过 imageDisplayRect 扣除留白 offset）
         QPixmap pix = ui->lblViewOriginal->pixmap();
         if (pix.isNull() || m_lastResult.frameOriginal.empty())
             return true;
-        if (labelRect.width() < 5 || labelRect.height() < 5)
+
+        QRect displayRect = imageDisplayRect(ui->lblViewOriginal);
+        if (displayRect.width() < 5 || displayRect.height() < 5)
+            return true;
+
+        // 将 label 坐标系下的框选矩形与 pixmap 实际显示区域求交集
+        // 避免在黑色留白区拖框产生错误的 ROI
+        QRect clippedRect = labelRect.intersected(displayRect);
+        if (clippedRect.width() < 5 || clippedRect.height() < 5)
             return true;
 
         const QSize imgSize(m_lastResult.frameOriginal.cols,
                             m_lastResult.frameOriginal.rows);
-        const int lblW = ui->lblViewOriginal->width();
-        const int lblH = ui->lblViewOriginal->height();
-        if (lblW == 0 || lblH == 0)
-            return true;
 
-        double ratioX = (double)imgSize.width()  / lblW;
-        double ratioY = (double)imgSize.height() / lblH;
+        // 比例因子：原图尺寸 / pixmap 显示尺寸
+        double ratioX = (double)imgSize.width()  / displayRect.width();
+        double ratioY = (double)imgSize.height() / displayRect.height();
 
-        // clamp 到图像边界
+        // 扣除 displayRect 的左上角 offset 后按比例换算到图像坐标
         QRect roi;
-        roi.setX(  qBound(0, (int)(labelRect.x()      * ratioX), imgSize.width()  - 1));
-        roi.setY(  qBound(0, (int)(labelRect.y()      * ratioY), imgSize.height() - 1));
-        roi.setRight( qBound(0, (int)(labelRect.right()  * ratioX), imgSize.width()  - 1));
-        roi.setBottom(qBound(0, (int)(labelRect.bottom() * ratioY), imgSize.height() - 1));
+        roi.setX(  qBound(0, (int)((clippedRect.x()      - displayRect.x()) * ratioX), imgSize.width()  - 1));
+        roi.setY(  qBound(0, (int)((clippedRect.y()      - displayRect.y()) * ratioY), imgSize.height() - 1));
+        roi.setRight( qBound(0, (int)((clippedRect.right()  - displayRect.x()) * ratioX), imgSize.width()  - 1));
+        roi.setBottom(qBound(0, (int)((clippedRect.bottom() - displayRect.y()) * ratioY), imgSize.height() - 1));
 
         m_observeRoiRect = roi;
 
@@ -825,9 +874,10 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
     {
         // QPainter 直接在 label 上绘制（overlay，不污染 pixmap）
         QPainter painter(ui->lblViewOriginal);
-        // ① 先画底图
-        if (!ui->lblViewOriginal->pixmap().isNull())
-            painter.drawPixmap(ui->lblViewOriginal->rect(), ui->lblViewOriginal->pixmap());
+        // ① 先画底图（居中绘制到 pixmap 的实际显示区域，保持宽高比不变形）
+        const QPixmap pix = ui->lblViewOriginal->pixmap();
+        if (!pix.isNull())
+            painter.drawPixmap(imageDisplayRect(ui->lblViewOriginal), pix);
         // ② 再画红框 overlay
         drawRoiRect();
         return true; // 已自行完成绘制，阻止默认行为

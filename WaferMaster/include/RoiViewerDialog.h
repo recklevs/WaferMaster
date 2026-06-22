@@ -18,6 +18,8 @@ public:
     void setImages(const QImage& original, const QImage& result);
 
 private:
-    QLabel* m_labelOriginal = nullptr; // ROI 原图
-    QLabel* m_labelResult   = nullptr; // ROI 平坦图
+    QLabel* m_titleOriginal = nullptr; // ROI 原图 标题
+    QLabel* m_titleResult   = nullptr; // ROI 结果图 标题
+    QLabel* m_labelOriginal = nullptr; // ROI 原图 图片
+    QLabel* m_labelResult   = nullptr; // ROI 平坦图 图片
 };

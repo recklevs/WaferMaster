@@ -26,18 +26,16 @@ class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
 
 ###  主链路
  1. 构造 → setupUiState() 初始化 UI 控件初始状态
- 2. setupWorkers() 创建 FrameProducer + WaferAlgorithm + QThread（无父对象）
+ 2. setupWorkers() 创建两条空 QThread（Worker 对象在 onStartClicked() 全量重建）
  3. setupConnections() 建立信号槽连接（采集→算法→显示）
  4. 用户点击"开始检测" → onStartClicked() → 注入配置 → 启动线程
- 5. 算法结果到达 → onAlgorithmResultReady() → refreshMainViews()
-                                         → updateStatusBarText()
+ 5. 算法结果到达 → onAlgorithmResultReady() → refreshMainViews()→ updateStatusBarText()                              
  6. 用户点击"停止检测" → onStopClicked() → 停止线程 → cleanupWorkers()
-
 ###  观察 ROI
  7. eventFilter() 在原图 QLabel 上捕获鼠标框选交互
- 8. mapLabelRectToImageRect() 将 QLabel 像素坐标映射到实际图像像素坐标
- 9. refreshObserveRoiViews() 裁出 ROI 原图 + ROI 结果图
-10. 观察 ROI 仅在 Idle / Stopped 状态可用，运行中自动禁用
+ 8. imageDisplayRect() 将 QLabel 像素坐标映射到实际图像像素坐标
+ 9. refreshObserveRoiViews() 裁出 ROI 原图 + ROI 平坦图 → 推送到 RoiViewerDialog 弹窗
+ 10. 观察 ROI 仅在 Idle / Stopped 状态可用，Running 时自动禁用
 
 ### 线程安全
  - 主线程操作所有 QWidget / QLabel / QStatusBar
@@ -64,9 +62,13 @@ protected:
     /// @return true=事件已被拦截，不再继续传递
     bool eventFilter(QObject* watched, QEvent* event) override;
 
+    /// @brief 窗口尺寸变化时重新缩放所有图像显示，确保全屏/恢复后比例正确
+    /// @param event 窗口 resize 事件
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     // ========================================================================
-    // UI 12个交互槽函数
+    // UI 交互槽函数
     // ========================================================================
 
     /// @brief 浏览按钮：根据输入源类型弹出文件/文件夹选择对话框
@@ -139,7 +141,7 @@ private slots:
 
 private:
     // ========================================================================
-    // 初始化和清理（4）
+    // 初始化和清理（5）
     // ========================================================================
 
     /// @brief 设置 UI 控件初始状态：按钮启用/禁用、状态栏默认文本、观察 ROI 初始关闭
@@ -222,6 +224,12 @@ private:
     /// @brief 在原图 QLabel 上绘制观察 ROI 红色虚线框
     ///        在 eventFilter() 的 Paint 事件中调用
     void drawRoiRect();
+
+    /// @brief 计算 QLabel 内 pixmap 的实际显示区域（KeepAspectRatio 居中后的矩形）
+    ///        用于 Paint 分支绘制底图和鼠标坐标反算时的留白 offset 扣除
+    /// @param label 目标 QLabel 指针
+    /// @return pixmap 在 label 内的居中矩形，若 label 为空或 pixmap 为空则返回空 QRect
+    QRect imageDisplayRect(QLabel* label) const;
 
     // ========================================================================
     // 成员变量 — UI

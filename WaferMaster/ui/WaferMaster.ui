@@ -13,6 +13,163 @@
   <property name="windowTitle">
    <string>WaferMaster</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">
+
+QMainWindow {
+    background-color: #f0f2f5;
+}
+
+/* --- GroupBox：白底 + 浅灰边框 + 圆角 --- */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    margin-top: 10px;
+    font-weight: bold;
+    padding-top: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #1f2937;
+}
+
+/* --- 图像 QLabel：深灰背景 + 文本居中 --- */
+QLabel#lblViewOriginal,
+QLabel#lblViewSpectrum,
+QLabel#lblViewFlatness {
+    background-color: #2d2d2d;
+    color: #9ca3af;
+    qproperty-alignment: AlignCenter;
+    border: 1px solid #d0d5dd;
+    border-radius: 4px;
+    min-height: 150px;
+}
+
+/* --- 参数显示 QLabel --- */
+QGroupBox#groupParams QLabel {
+    background: transparent;
+    color: #374151;
+}
+
+/* --- 通信状态 QLabel --- */
+QGroupBox#groupComm QLabel {
+    background: transparent;
+    color: #374151;
+}
+
+/* --- 日志框：深色背景 + 浅色等宽字体 --- */
+QPlainTextEdit#plainTextEditLog {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 9pt;
+    border: 1px solid #313244;
+    border-radius: 4px;
+    selection-background-color: #45475a;
+}
+
+/* --- 通用 QPushButton 样式 --- */
+QPushButton {
+    color: #ffffff;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-size: 9pt;
+    font-weight: bold;
+}
+
+/* --- 开始检测：绿色 --- */
+QPushButton#btnStart {
+    background-color: #22c55e;
+}
+QPushButton#btnStart:hover {
+    background-color: #16a34a;
+}
+QPushButton#btnStart:pressed {
+    background-color: #15803d;
+}
+QPushButton#btnStart:disabled {
+    background-color: #86efac;
+}
+
+/* --- 停止检测：红色 --- */
+QPushButton#btnStop {
+    background-color: #ef4444;
+}
+QPushButton#btnStop:hover {
+    background-color: #dc2626;
+}
+QPushButton#btnStop:pressed {
+    background-color: #b91c1c;
+}
+QPushButton#btnStop:disabled {
+    background-color: #fca5a5;
+}
+
+/* --- 浏览 / 观察ROI：蓝灰 --- */
+QPushButton#btnBrowse,
+QPushButton#btnObserveRoi {
+    background-color: #6366f1;
+}
+QPushButton#btnBrowse:hover,
+QPushButton#btnObserveRoi:hover {
+    background-color: #4f46e5;
+}
+QPushButton#btnBrowse:pressed,
+QPushButton#btnObserveRoi:pressed {
+    background-color: #4338ca;
+}
+
+/* --- 勾选状态（checkable 按钮）--- */
+QPushButton#btnObserveRoi:checked {
+    background-color: #f59e0b;
+}
+QPushButton#btnObserveRoi:checked:hover {
+    background-color: #d97706;
+}
+
+/* --- QComboBox / QLineEdit --- */
+QComboBox, QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #d0d5dd;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #1f2937;
+}
+QComboBox:hover, QLineEdit:hover {
+    border-color: #6366f1;
+}
+
+/* --- QSlider --- */
+QSlider::groove:horizontal {
+    background: #e5e7eb;
+    height: 4px;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: #6366f1;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QSlider::sub-page:horizontal {
+    background: #818cf8;
+    border-radius: 2px;
+}
+
+/* --- QStatusBar --- */
+QStatusBar {
+    background-color: #e5e7eb;
+    color: #374151;
+    border-top: 1px solid #d0d5dd;
+    font-size: 9pt;
+}
+   </string>
+  </property>
   <widget class="QWidget" name="centralWidget">
    <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,4">
     <item>
@@ -79,7 +236,7 @@
            <item>
             <widget class="QPushButton" name="btnObserveRoi">
              <property name="text">
-              <string>观察ROI选框</string>
+              <string>启用ROI观察</string>
              </property>
              <property name="checkable">
               <bool>true</bool>
@@ -171,28 +328,47 @@
           </widget>
          </item>
          <item>
-          <widget class="QPlainTextEdit" name="plainTextEditLog">
-           <property name="readOnly">
-            <bool>true</bool>
+          <widget class="QGroupBox" name="groupComm">
+           <property name="title">
+            <string>通信状态</string>
            </property>
-           <property name="maximumBlockCount">
-            <number>200</number>
-           </property>
-           <property name="placeholderText">
-            <string>日志输出...</string>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>120</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>16777215</width>
-             <height>200</height>
-            </size>
-           </property>
+           <layout class="QVBoxLayout" name="verticalLayout_10">
+            <item>
+             <widget class="QLabel" name="lblCommMode">
+              <property name="text">
+               <string>模式: TCP Server</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblCommAddress">
+              <property name="text">
+               <string>地址: 127.0.0.1</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblCommPort">
+              <property name="text">
+               <string>端口: 9000</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblCommListenState">
+              <property name="text">
+               <string>状态: 未监听</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblCommClientState">
+              <property name="text">
+               <string>客户端: 未连接</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </widget>
          </item>
         </layout>
@@ -213,99 +389,134 @@
      </layout>
     </item>
     <item>
-     <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="0">
-       <widget class="QGroupBox" name="groupOriginal">
+      <layout class="QGridLayout" name="gridLayout" rowstretch="1,1" columnstretch="1,1">
+       <item row="0" column="0">
+        <widget class="QGroupBox" name="groupOriginal">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
         <property name="title">
          <string>原图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_8">
          <item>
-          <widget class="QLabel" name="lblViewOriginal">
-           <property name="text">
-            <string>原图显示区</string>
-           </property>
-          </widget>
+           <widget class="QLabel" name="lblViewOriginal">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>320</width>
+              <height>240</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>原图显示区</string>
+            </property>
+           </widget>
          </item>
         </layout>
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QGroupBox" name="groupSpectrum">
-        <property name="title">
+        <widget class="QGroupBox" name="groupSpectrum">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
          <string>频谱图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_9">
          <item>
-          <widget class="QLabel" name="lblViewSpectrum">
-           <property name="text">
-            <string>频谱图显示区</string>
-           </property>
-          </widget>
+           <widget class="QLabel" name="lblViewSpectrum">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>320</width>
+              <height>240</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>频谱图显示区</string>
+            </property>
+           </widget>
          </item>
         </layout>
        </widget>
       </item>
       <item row="1" column="0">
-       <widget class="QGroupBox" name="groupFlatness">
-        <property name="title">
+        <widget class="QGroupBox" name="groupFlatness">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
          <string>平坦图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_7">
          <item>
-          <widget class="QLabel" name="lblViewFlatness">
-           <property name="text">
-            <string>平坦图显示区</string>
-           </property>
-          </widget>
+           <widget class="QLabel" name="lblViewFlatness">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>320</width>
+              <height>240</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>平坦图显示区</string>
+            </property>
+           </widget>
          </item>
         </layout>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QGroupBox" name="groupComm">
-        <property name="title">
-         <string>通信状态</string>
-        </property>
-        <layout class="QVBoxLayout" name="verticalLayout_10">
-         <item>
-          <widget class="QLabel" name="lblCommMode">
-           <property name="text">
-            <string>模式: TCP Server</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="lblCommAddress">
-           <property name="text">
-            <string>地址: 127.0.0.1</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="lblCommPort">
-           <property name="text">
-            <string>端口: 9000</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="lblCommListenState">
-           <property name="text">
-            <string>状态: 未监听</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="lblCommClientState">
-           <property name="text">
-            <string>客户端: 未连接</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
+       <item row="1" column="1">
+        <widget class="QPlainTextEdit" name="plainTextEditLog">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+         <property name="maximumBlockCount">
+          <number>200</number>
+         </property>
+         <property name="placeholderText">
+          <string>日志输出...</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>160</height>
+          </size>
+         </property>
+        </widget>
+       </item>
      </layout>
     </item>
    </layout>
