@@ -15,7 +15,7 @@ find_package(OpenCV REQUIRED)
 
 # 查找 Qt 6 组件
 set(CMAKE_PREFIX_PATH "E:/Qt/6.10.2/msvc2022_64")
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Sql)
 
 # 引入 spdlog (本地源码 v1.14.1)
 # spdlog 源码放在项目根目录 spdlog/ 下，cmake 会自动编译成静态库 spdlog::spdlog
@@ -34,6 +34,7 @@ set(SOURCES
     src/RoiViewerDialog.cpp
     src/Logger.cpp
     src/CommunicationManager.cpp
+    src/ResultLogger.cpp
 )
 
 set(HEADERS
@@ -44,6 +45,7 @@ set(HEADERS
     include/RoiViewerDialog.h
     include/Logger.h 
     include/CommunicationManager.h
+    include/ResultLogger.h
 )
 
 set(UIS
@@ -64,6 +66,7 @@ target_link_libraries(WaferMaster
     Qt6::Core
     Qt6::Widgets
     Qt6::Network
+    Qt6::Sql
     ${OpenCV_LIBS}
     spdlog::spdlog
 )

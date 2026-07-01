@@ -8,6 +8,7 @@
 #include <QPoint>
 #include <opencv2/opencv.hpp>
 #include "Common.h"
+#include "ResultLogger.h"
 
 class QLabel;
 class FrameProducer;
@@ -164,6 +165,8 @@ private:
     /// @brief 初始化 TCP 通信层：创建 CommunicationManager、连接信号槽、启动服务
     void setupCommunication();
 
+    void initResultLogger(StorageMode mode);
+
     /// @brief 安全停止线程并释放资源（quit → wait → deleteLater）
     ///        先停 FrameProducer 再停 WaferAlgorithm，确保不再有新帧入队
     void cleanupWorkers();
@@ -278,4 +281,9 @@ private:
     // 成员变量 — 通信层
     // ========================================================================
     CommunicationManager* m_comm = nullptr; // TCP 通信管理对象
+
+    // ========================================================================
+    // 成员变量 — 结果记录
+    // ========================================================================
+    ResultLogger* m_resultLogger = nullptr;  // 检测结果存储器
 };

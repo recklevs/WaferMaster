@@ -5,6 +5,7 @@
 #include "RoiViewerDialog.h"
 #include "CommunicationManager.h"
 #include "Logger.h"
+#include "ResultLogger.h"
 
 #include <QFileDialog>
 #include <QHostAddress>
@@ -28,6 +29,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupWorkers();//创建线程对象
     setupConnections();//建立信号槽连接
     setupCommunication();//创建并启动 TCP 通信服务器
+    initResultLogger(StorageMode::Both); // 默认 CSV + SQLite 双写
 }
 
 MainWindow::~MainWindow()
@@ -37,6 +39,7 @@ MainWindow::~MainWindow()
         m_comm->stopServer();
     }
     delete m_roiDialog;//防御性删除，确保即使未创建也安全
+    delete m_resultLogger;
     delete ui;
 }
 
@@ -120,10 +123,13 @@ void MainWindow::setupCommunication()
 {
     // 创建并启动 TCP 通信服务器
     m_comm = new CommunicationManager(this);
+    // 信号①：远程 START → 模拟本地点击"开始检测"
     connect(m_comm, &CommunicationManager::startRequested,
             this, &MainWindow::onCommStartRequested);
+    // 信号②：远程 STOP → 模拟本地点击"停止检测"
     connect(m_comm, &CommunicationManager::stopRequested,
             this, &MainWindow::onCommStopRequested);
+    // 信号③：监听状态变化 → 刷新 UI 通信面板
     connect(m_comm, &CommunicationManager::listeningStateChanged,
             this, [this](bool listening, const QString& msg) {
         ui->lblCommListenState->setText(
@@ -133,6 +139,7 @@ void MainWindow::setupCommunication()
         ui->lblCommAddress->setText(QStringLiteral("地址: 127.0.0.1"));
         ui->lblCommPort->setText(QStringLiteral("端口: 9000"));
     });
+    // 信号④：客户端连接/断开 → 刷新客户端数量
     connect(m_comm, &CommunicationManager::clientStateChanged,
             this, [this](bool connected, int count) {
         ui->lblCommClientState->setText(
@@ -140,9 +147,21 @@ void MainWindow::setupCommunication()
                 ? QStringLiteral("%1个已连接").arg(count)
                 : QStringLiteral("未连接")));
     });
+    // 信号⑤：通信日志 → 追加到日志面板
     connect(m_comm, &CommunicationManager::logMessage,
             this, &MainWindow::onLogMessage);
-    m_comm->startServer(QHostAddress::LocalHost, 9000);
+    m_comm->startServer(QHostAddress::LocalHost, 9000);//启动 TCP 服务器，监听本地回环地址
+}
+
+void MainWindow::initResultLogger(StorageMode mode)
+{
+    delete m_resultLogger;
+    m_resultLogger = new ResultLogger(this);
+    m_resultLogger->setMode(mode);
+
+    // 日志转发到主窗口日志面板
+    connect(m_resultLogger, &ResultLogger::logMessage,
+            this, &MainWindow::onLogMessage);
 }
 
 void MainWindow::cleanupWorkers()
@@ -413,6 +432,10 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
     // 通知通信层最新结果
     if (m_comm)
         m_comm->updateLatestStatus(m_runState, result);
+
+    // 通用结果存储（CSV + SQLite，按当前模式写入）
+    if (m_resultLogger)
+        m_resultLogger->append(result);
 }//Algorithm每处理完一帧后，都会调用这个槽函数来更新界面显示和状态栏信息。
 
 void MainWindow::onWorkerError(const QString& message)
