@@ -142,7 +142,7 @@ private slots:
 
 private:
     // ========================================================================
-    // 初始化和清理（5）
+    // 初始化和清理
     // ========================================================================
 
     /// @brief 设置 UI 控件初始状态：按钮启用/禁用、状态栏默认文本、观察 ROI 初始关闭
@@ -165,14 +165,21 @@ private:
     /// @brief 初始化 TCP 通信层：创建 CommunicationManager、连接信号槽、启动服务
     void setupCommunication();
 
-    void initResultLogger(StorageMode mode);
+    /// @brief 初始化或重新配置结果日志记录器（CSV + SQLite 双写）
+    ///        csvPath / dbPath 为空时自动推导至 exe 所在目录的 logs/ 子目录
+    /// @param mode    存储模式：None / Csv / Sqlite / Both
+    /// @param csvPath CSV 文件路径（可选，空则自动推导）
+    /// @param dbPath  SQLite 数据库路径（可选，空则自动推导）
+    void initResultLogger(StorageMode mode,
+                          const QString& csvPath = QString(),
+                          const QString& dbPath = QString());
 
     /// @brief 安全停止线程并释放资源（quit → wait → deleteLater）
     ///        先停 FrameProducer 再停 WaferAlgorithm，确保不再有新帧入队
     void cleanupWorkers();
 
     // ========================================================================
-    // 配置与状态（4）
+    // 配置与状态
     // ========================================================================
 
     /// @brief 从 UI 控件收集当前参数，构造 SourceConfig
@@ -206,7 +213,7 @@ private:
     void refreshObserveRoiViews();
 
     // ========================================================================
-    // 图像工具函数（2）
+    // 图像工具函数
     // ========================================================================
 
     /// @brief 将 OpenCV cv::Mat 转换为 Qt QImage（BGR → RGB 色彩通道转换）

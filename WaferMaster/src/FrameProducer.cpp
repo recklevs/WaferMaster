@@ -56,6 +56,14 @@ void FrameProducer::start()
 
     if (m_config.sourceType == InputSourceType::AviVideo)
     {
+        if (m_config.sourcePath.isEmpty() ||
+    !QFile::exists(m_config.sourcePath))
+{
+    emit errorOccurred(QStringLiteral("视频文件不存在：%1")
+                       .arg(m_config.sourcePath));
+    m_running = false;
+    return;
+}
         // ---- AVI 视频分支 ----
         m_cap.open(m_config.sourcePath.toStdString());//把Qt 的 `QString` 转成 C++ 标准 `std::string`
 
@@ -78,7 +86,7 @@ void FrameProducer::start()
         QDir dir(m_config.sourcePath);//QDir是 Qt 的目录操作类
         if (!dir.exists())
         {
-            emit errorOccurred(QStringLiteral("Directory not found: %1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("图片序列目录不存在: %1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }

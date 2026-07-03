@@ -7,6 +7,8 @@
 #include "Logger.h"
 #include "ResultLogger.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
 #include <QHostAddress>
 #include <QMessageBox>
@@ -29,7 +31,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupWorkers();//创建线程对象
     setupConnections();//建立信号槽连接
     setupCommunication();//创建并启动 TCP 通信服务器
-    initResultLogger(StorageMode::Both); // 默认 CSV + SQLite 双写
+    initResultLogger(StorageMode::Both); // 硬编码默认 CSV + SQLite 双写
 }
 
 MainWindow::~MainWindow()
@@ -153,13 +155,28 @@ void MainWindow::setupCommunication()
     m_comm->startServer(QHostAddress::LocalHost, 9000);//启动 TCP 服务器，监听本地回环地址
 }
 
-void MainWindow::initResultLogger(StorageMode mode)
+// ═══════════════════════════════════════════════════════════════════
+// 结果记录初始化：CSV + SQLite 双写
+// ═══════════════════════════════════════════════════════════════════
+void MainWindow::initResultLogger(StorageMode mode,
+                                  const QString& csvPath,
+                                  const QString& dbPath)
 {
-    delete m_resultLogger;
+    delete m_resultLogger; // 先销毁旧实例（重复调用时安全）
     m_resultLogger = new ResultLogger(this);
-    m_resultLogger->setMode(mode);
 
-    // 日志转发到主窗口日志面板
+    // 若未指定路径，默认写入 exe 所在目录的 logs/ 子目录
+    const QString logDir = QCoreApplication::applicationDirPath() + QStringLiteral("/logs");
+    QDir().mkpath(logDir); // 确保目录存在
+    //  三目运算：如果调用者没传路径（空字符串），就用默认路径
+    const QString finalCsv = csvPath.isEmpty()
+        ? logDir + QStringLiteral("/records.csv") : csvPath;
+    const QString finalDb = dbPath.isEmpty()
+        ? logDir + QStringLiteral("/records.db")  : dbPath;
+
+    m_resultLogger->setMode(mode, finalCsv, finalDb);
+
+    // ResultLogger 日志 → 主窗口日志面板
     connect(m_resultLogger, &ResultLogger::logMessage,
             this, &MainWindow::onLogMessage);
 }
@@ -259,7 +276,8 @@ void MainWindow::onStartClicked()
     m_sourceConfig = buildSourceConfig();
 
     // 路径非空校验
-    if (m_sourceConfig.sourcePath.isEmpty())
+    if (m_sourceConfig.sourcePath.isEmpty()||
+    m_sourceConfig.sourcePath == ui->editSourcePath->placeholderText())//防止路径被错误地设置成了占位文本
     {
         QMessageBox::warning(this,
             QStringLiteral("参数错误"),
@@ -435,6 +453,7 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
 
     // 通用结果存储（CSV + SQLite，按当前模式写入）
     if (m_resultLogger)
+        // 持久化存储：CSV + SQLite 按模式写入
         m_resultLogger->append(result);
 }//Algorithm每处理完一帧后，都会调用这个槽函数来更新界面显示和状态栏信息。
 
