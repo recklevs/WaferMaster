@@ -55,7 +55,10 @@ set(UIS
 # 预生成 ui_*.h 头文件（Configure 阶段生成，IDE 可识别）
 qt_wrap_ui(GENERATED_UI_HDRS ${UIS})
 
-add_executable(WaferMaster ${SOURCES} ${HEADERS} ${GENERATED_UI_HDRS})
+add_executable(WaferMaster ${SOURCES} ${HEADERS} ${GENERATED_UI_HDRS}
+    resources/resources.qrc
+    resources/app.rc
+)
 
 # 将 CMake 构建目录加入 include 路径，使 IDE/IntelliSense 能找到自动生成的 ui_*.h
 target_include_directories(WaferMaster PRIVATE ${CMAKE_BINARY_DIR})

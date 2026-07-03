@@ -31,6 +31,7 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent), ui(new Ui::MainWindow)//创建一个 Ui::MainWindow 对象，并将其地址赋值给成员指针 ui。
 {
     ui->setupUi(this);//调用 ui 对象的 setupUi() 方法，传入 this 指针（MainWindow 实例），完成 UI 初始化。
+    this->setWindowIcon(QIcon(":/logo.png"));
     setupUiState();//设置控件初始值
     setupWorkers();//创建线程对象
     setupConnections();//建立信号槽连接

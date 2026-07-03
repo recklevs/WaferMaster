@@ -7,3 +7,14 @@ bin/
 
 # 防止 CMake FetchContent 产生的嵌套 git 仓库干扰主仓库
 **/_deps/
+
+# 用户本地预设（含本地路径，不应提交）
+CMakeUserPresets.json
+
+# 运行时生成的文件
+logs/
+*.csv
+*.db
+
+# 排除 spdlog 自带的 git 仓库
+spdlog/.git/
