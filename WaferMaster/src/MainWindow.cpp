@@ -18,6 +18,10 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QInputDialog>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QDateTime>
 
 // ============================================================================
 // 构造 & 析构
@@ -109,6 +113,8 @@ void MainWindow::setupConnections()
     connect(ui->sliderBright,   &QSlider::valueChanged, this, &MainWindow::onBrightnessChanged);
     connect(ui->sliderContrast, &QSlider::valueChanged, this, &MainWindow::onContrastChanged);
 
+    connect(ui->btnQueryHistory, &QPushButton::clicked,this, &MainWindow::onQueryHistoryClicked);      
+
     // QtLogBridge → 日志控件（Logger::init() 已创建 QtLogBridge）
     QtLogBridge* bridge = Logger::getBridge();
     if (bridge)
@@ -163,7 +169,7 @@ void MainWindow::initResultLogger(StorageMode mode,
                                   const QString& dbPath)
 {
     delete m_resultLogger; // 先销毁旧实例（重复调用时安全）
-    m_resultLogger = new ResultLogger(this);
+    m_resultLogger = new ResultLogger(this);//创建新的 ResultLogger 实例，parent=this 由主窗口管理生命周期
 
     // 若未指定路径，默认写入 exe 所在目录的 logs/ 子目录
     const QString logDir = QCoreApplication::applicationDirPath() + QStringLiteral("/logs");
@@ -499,6 +505,82 @@ void MainWindow::onCommStopRequested()
         onStopClicked();
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 历史查询
+// ═══════════════════════════════════════════════════════════════════
+
+void MainWindow::onQueryHistoryClicked()
+{
+    if (!m_resultLogger ||
+        (m_resultLogger->mode() != StorageMode::Sqlite &&
+         m_resultLogger->mode() != StorageMode::Both))//检查Logger 是否存在 & 当前存储模式是否包含 SQLite
+    {
+        QMessageBox::warning(this,
+            QStringLiteral("提示"),
+            QStringLiteral("当前模式不支持历史查询"));
+        return;
+    }
+
+    QStringList levels{QStringLiteral("Good"),
+                       QStringLiteral("Warning"),
+                       QStringLiteral("NG")};
+    bool ok = false;
+    QString chosen = QInputDialog::getItem(this,
+        QStringLiteral("查询历史记录"),
+        QStringLiteral("选择检测等级："), levels, 0, false, &ok);
+    if (!ok || chosen.isEmpty()) return;
+
+    //选择的字符串转换为 DetectionLevel 枚举值
+    DetectionLevel level = DetectionLevel::Good;
+    if      (chosen == QStringLiteral("Warning")) level = DetectionLevel::Warning;
+    else if (chosen == QStringLiteral("NG"))      level = DetectionLevel::Ng;
+
+    QList<AlgoResult> results = m_resultLogger->queryByLevel(level);
+    if (results.isEmpty())
+    {
+        QMessageBox::information(this,
+            QStringLiteral("查询结果"),
+            QStringLiteral("未找到等级为 %1 的历史记录").arg(chosen));
+        return;
+    }
+    //创建表格对话框
+    QDialog* dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);//用户关闭时自动删除，避免内存泄漏
+    dlg->setWindowTitle(QStringLiteral("历史查询 — %1（共%2条）")
+                        .arg(chosen).arg(results.size()));
+    dlg->resize(700, 450);
+    // 创建表格控件，行数=查询结果条数，列数=5，dlg为父
+    QTableWidget* table = new QTableWidget(results.size(), 5, dlg);
+    table->setHorizontalHeaderLabels({
+        QStringLiteral("时间"), QStringLiteral("FI"),
+        QStringLiteral("P95"), QStringLiteral("HotRatio(%)"),
+        QStringLiteral("Level")});//设置表头标签
+    table->horizontalHeader()->setStretchLastSection(true);//最后一列自动拉伸填满剩余宽度
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);//禁止编辑
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);//整行选中
+
+    for (int i = 0; i < results.size(); ++i)//遍历查询结果，填充表格
+    {
+        const AlgoResult& r = results[i];
+        QDateTime dt = QDateTime::fromMSecsSinceEpoch(r.timestampMs);//把毫秒时间戳转为日期时间对象
+        //创建N条×5列表格的单元格对象
+        table->setItem(i, 0,
+            new QTableWidgetItem(dt.toString(QStringLiteral("MM-dd hh:mm:ss"))));
+        table->setItem(i, 1,
+            new QTableWidgetItem(QString::number(r.fi, 'f', 2)));
+        table->setItem(i, 2,
+            new QTableWidgetItem(QString::number(r.p95, 'f', 1)));
+        table->setItem(i, 3,
+            new QTableWidgetItem(QString::number(r.hotRatio, 'f', 2)));
+        table->setItem(i, 4,
+            new QTableWidgetItem(detectionLevelToString(r.level)));
+    }
+    //创建布局管理器对象
+    QVBoxLayout* lay = new QVBoxLayout(dlg);
+    lay->addWidget(table);//把表格控件添加到布局中
+    dlg->exec();
+}/*这些对象的生命周期从函数调用到dlg关闭，不存在"声明后、赋值前被使用"的窗口期，不需初始化*/
 
 // ============================================================================
 // 配置与状态

@@ -109,17 +109,20 @@ QPushButton#btnStop:disabled {
     background-color: #fca5a5;
 }
 
-/* --- 浏览 / 观察ROI：蓝灰 --- */
+/* --- 浏览 / 观察ROI/历史查询：蓝灰 --- */
 QPushButton#btnBrowse,
-QPushButton#btnObserveRoi {
+QPushButton#btnObserveRoi,
+QPushButton#btnQueryHistory {
     background-color: #6366f1;
 }
 QPushButton#btnBrowse:hover,
-QPushButton#btnObserveRoi:hover {
+QPushButton#btnObserveRoi:hover,
+QPushButton#btnQueryHistory:hover {
     background-color: #4f46e5;
 }
 QPushButton#btnBrowse:pressed,
-QPushButton#btnObserveRoi:pressed {
+QPushButton#btnObserveRoi:pressed,
+QPushButton#btnQueryHistory:pressed {
     background-color: #4338ca;
 }
 
@@ -233,21 +236,28 @@ QStatusBar {
              </property>
             </widget>
            </item>
-           <item>
-            <widget class="QPushButton" name="btnObserveRoi">
-             <property name="text">
-              <string>启用ROI观察</string>
-             </property>
-             <property name="checkable">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="groupView">
+            <item>
+             <widget class="QPushButton" name="btnObserveRoi">
+              <property name="text">
+               <string>启用ROI观察</string>
+              </property>
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnQueryHistory">
+              <property name="text">
+               <string>历史查询</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="groupView">
           <property name="title">
            <string>显示增强</string>
           </property>

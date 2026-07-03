@@ -173,7 +173,7 @@ QList<AlgoResult> ResultLogger::queryByLevel(DetectionLevel level) const
 
     QSqlQuery q(m_db);
     q.prepare(
-        "SELECT fi, p95, hotRatio, roi_x, roi_y, roi_w, roi_h "
+        "SELECT ts, fi, p95, hotRatio, roi_x, roi_y, roi_w, roi_h "
         "FROM records WHERE level = ? ORDER BY ts DESC");// prepare()是预编译SQL，?是占位符
     q.bindValue(0, detectionLevelToString(level));// 把 ? 替换为level字符串
 
@@ -182,13 +182,15 @@ QList<AlgoResult> ResultLogger::queryByLevel(DetectionLevel level) const
     while (q.next())
     {
         AlgoResult r;
-        r.fi       = q.value(0).toDouble();
-        r.p95      = q.value(1).toDouble();
-        r.hotRatio = q.value(2).toDouble();
-        r.algoRoiRect = QRect(q.value(3).toInt(), q.value(4).toInt(),
-                              q.value(5).toInt(), q.value(6).toInt());
-        r.level    = level;
-        r.frameIdx = -1; // 标识为历史查询记录，区别于实时帧
+        r.timestampMs = QDateTime::fromString(q.value(0).toString(), Qt::ISODate)
+                        .toMSecsSinceEpoch(); // ts → 毫秒时间戳
+        r.fi          = q.value(1).toDouble();
+        r.p95         = q.value(2).toDouble();
+        r.hotRatio    = q.value(3).toDouble();
+        r.algoRoiRect = QRect(q.value(4).toInt(), q.value(5).toInt(),
+                              q.value(6).toInt(), q.value(7).toInt());
+        r.level       = level;
+        r.frameIdx    = -1; // 标识为历史查询记录，区别于实时帧
         list.append(r);
     }
     return list;
