@@ -18,3 +18,4 @@ logs/
 
 # 排除 spdlog 自带的 git 仓库
 spdlog/.git/
+.vscode/
