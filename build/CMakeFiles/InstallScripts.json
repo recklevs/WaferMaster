@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"E:/vsproject/WaferMaster/build/cmake_install.cmake",
-		"E:/vsproject/WaferMaster/build/spdlog_build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

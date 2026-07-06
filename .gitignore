@@ -1,0 +1,19 @@
+build/
+build-vscode/
+.vscode/
+.vs/
+out/
+bin/
+*.user
+logs/
+*.csv
+*.db
+
+# 防止 CMake FetchContent 产生的嵌套 git 仓库干扰主仓库
+**/_deps/
+
+# 用户本地预设（含本地路径，不应提交）
+**/CMakeUserPresets.json
+
+# spdlog 自带 git 仓库内容
+**/spdlog/.git/
