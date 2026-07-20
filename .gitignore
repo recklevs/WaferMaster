@@ -20,3 +20,10 @@ logs/
 # 发布产物
 WaferMaster_Release_v1.0/
 WaferMaster_v1.0.zip
+
+# ONNX Runtime 大二进制（从官方下载）
+**/onnxruntime/lib/
+!**/onnxruntime/include/
+
+# DL 模型文件
+**/model*.onnx

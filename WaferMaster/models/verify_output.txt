@@ -1,0 +1,102 @@
+2026-07-17 14:52:44,503 [INFO] 加载 ONNX 模型: model.onnx (103065.8 KB)
+============================================================
+ONNX 模型信息
+============================================================
+
+--- INPUTS ---
+  name : input
+  shape: ['batch_size', 3, 256, 256]
+  type : tensor(float)
+
+--- OUTPUTS ---
+  name : pred_score
+  shape: ['Clippred_score_dim_0']
+  type : tensor(float)
+  name : pred_label
+  shape: ['Clippred_score_dim_0']
+  type : tensor(bool)
+  name : anomaly_map
+  shape: ['Clipanomaly_map_dim_0', 'Clipanomaly_map_dim_1', 'Clipanomaly_map_dim_2', 'Clipanomaly_map_dim_3']
+  type : tensor(float)
+  name : pred_mask
+  shape: ['Clipanomaly_map_dim_0', 'Clipanomaly_map_dim_1', 'Clipanomaly_map_dim_2', 'Clipanomaly_map_dim_3']
+  type : tensor(bool)
+
+--- PROVIDERS ---
+  ['CPUExecutionProvider']
+============================================================
+
+[1] 随机数据推理测试...
+2026-07-17 14:52:45,085 [INFO] 输入: [1, 3, 256, 256]
+  [0] name=pred_score, shape=(1,), min=1.000000, max=1.000000, mean=1.000000
+  [1] name=pred_label, shape=(1,), min=1.000000, max=1.000000, mean=1.000000
+  [2] name=anomaly_map, shape=(1, 1, 256, 256), min=1.000000, max=1.000000, mean=1.000000
+  [3] name=pred_mask, shape=(1, 1, 256, 256), min=1.000000, max=1.000000, mean=1.000000
+
+[2] 真实数据推理测试...
+
+  --- 良品: s123_test_good_0000.png ---
+  [0] pred_score: shape=(1,), value=[0.44962114]
+  [1] pred_label: shape=(1,), value=[False]
+  [2] anomaly_map: shape=(1, 1, 256, 256), value=[0.41078323 0.41087937 0.41117117 0.41166538 0.4123667 ]
+  [3] pred_mask: shape=(1, 1, 256, 256), value=[False False False False False]
+
+  --- NG: s123_bend_0000.png ---
+  [0] pred_score: shape=(1,), value=[1.]
+  [1] pred_label: shape=(1,), value=[ True]
+  [2] anomaly_map: shape=(1, 1, 256, 256), value=[0.4355833  0.4357611  0.43629828 0.43720263 0.4384699 ]
+  [3] pred_mask: shape=(1, 1, 256, 256), value=[False False False False False]
+
+[3] 批量测试统计...
+2026-07-17 14:52:45,639 [INFO] 异常分数: idx=0 (pred_score)
+2026-07-17 14:52:45,639 [INFO] 热力图:   idx=2 (anomaly_map)
+
+  🟢 良品 (n=50):
+    mean=0.4886 std=0.0254 [0.4486, 0.5476]
+
+  🟡 Warning (n=35):
+    mean=0.6405 std=0.1747 [0.4530, 1.0000]
+
+  🔴 NG (n=315):
+    mean=0.7196 std=0.1554 [0.4448, 1.0000]
+
+  ╔══════════════════════════════════════════╗
+  ║  三级分类阈值                           ║
+  ╠══════════════════════════════════════════╣
+  ║  [0.00, 0.5409) → 🟢 Good            ║
+  ║  [0.5409, 0.7231) → 🟡 Warning  ║
+  ║  [0.7231, 1.00] → 🔴 NG              ║
+  ╠══════════════════════════════════════════╣
+  ║  T1 = P95(good)  = 0.5409           ║
+  ║  T2 = median(NG) = 0.7231           ║
+  ╚══════════════════════════════════════════╝
+
+  整体分类:
+    Good → Good:     47/50 (94.0%)
+    Good → Warning:  3/50 (6.0%)
+    Good → NG:       0/50 (0.0%)
+    NG   → NG:       158/315 (50.2%)
+    NG   → Warning:  104/315 (33.0%)
+    NG   → Good:     53/315 (16.8%)
+    Warn → Warning:  15/35 (42.9%)
+    Warn → Good:     13/35 (37.1%)
+    Warn → NG:       7/35 (20.0%)
+
+  ──────────────────────────────────────────────────────────────
+  📊 按缺陷类型细分（T1=0.5409 Good / 0.5409-0.7231 Warning / 0.7231 NG）
+  ──────────────────────────────────────────────────────────────
+  缺陷类型                样本       均值      漏检率  →Good  →Warn    →NG
+  ──────────────────────────────────────────────────────────────
+  bend                45   0.9981     0.0%     0     0    45
+  decay               45   0.7299     0.0%     0    14    31
+  drift               45   0.7069     0.0%     0    26    19
+  flat                45   0.6056    15.6%     7    38     0
+  jitter              45   0.4843   100.0%    45     0     0
+  scratch             45   0.7277     2.2%     1    20    24
+  warp                45   0.7844     0.0%     0     6    39
+  ──────────────────────────────────────────────────────────────
+  ALL (macro)        315   0.7196    16.8%    53   104   158
+
+============================================================
+验证完成！请将以上 INPUT/OUTPUT name + shape 信息提供给 C++ 端集成。
+============================================================
