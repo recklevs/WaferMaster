@@ -103,6 +103,9 @@ private slots:
     ///        仅影响显示渲染，不写入算法结果
     /// @param value 对比度值（0-100）
     void onContrastChanged(int value);
+        
+    /// @brief 检测模式切换（仅 UI：三视图标题 + 参数面板显示/隐藏）
+    void onDetectionModeChanged(int index);
 
     // ========================================================================
     // 跨线程信号接收槽
@@ -205,6 +208,10 @@ private:
     /// @brief 刷新参数显示标签：lblAlgoRoi / lblFiThresh / lblHotRatioThresh / lblObserveRoiInfo
     ///        在 onAlgorithmResultReady() 和 slider 变化时调用
     void updateParamLabels();
+
+    /// @brief 根据模式切换三视图标题 + 参数面板显示/隐藏
+    void updateViewLabelsForMode(DetectionMode mode);
+
     // ========================================================================
     // 显示刷新（2）
     // ========================================================================
@@ -300,4 +307,9 @@ private:
     // 成员变量 — 结果记录
     // ========================================================================
     ResultLogger* m_resultLogger = nullptr;  // 检测结果存储器
+
+    // ========================================================================
+    // 成员变量 — 检测模式
+    // ========================================================================
+    DetectionMode m_detectionMode = DetectionMode::Traditional;
 };

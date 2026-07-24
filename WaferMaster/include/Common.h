@@ -43,6 +43,13 @@ enum class StorageMode
     Both    // CSV + SQLite 双写
 };
 
+/// @brief 检测模式：传统 OpenCV 算法 或 PatchCore 深度学习
+enum class DetectionMode
+{
+    Traditional,   // OpenCV DFT 频域分析
+    DeepLearning   // PatchCore ONNX 推理
+};
+
 // ============================================================================
 // 配置结构体
 // ============================================================================
@@ -94,6 +101,21 @@ struct AlgoResult
     cv::Mat frameOriginal;             // 原始输入帧（clone 后的独立副本）
     cv::Mat frameSpectrum;             // 频谱图（处理中间结果，用于显示）
     cv::Mat frameFlatness;             // 平坦图（最终检测结果图，用于显示）
+
+    // —— DL 模式扩展字段（Traditional 模式下为默认值）——
+    DetectionMode mode          = DetectionMode::Traditional;
+    double        anomalyScore  = 0.0;
+    qint64        inferenceTimeMs = 0;
+    cv::Mat       frameHeatmap;       // DL 热力图
+};
+
+///@brief 深度学习模型配置
+struct DLconfig
+{
+    QString modelPath;                 // ONNX 模型文件路径
+    int     inputSize       = 256;   // 模型输入尺寸
+    float   goodThreshold   = 0.5409f;// Good/NG 判定阈值
+    float   ngThreshold     = 0.7231f;
 };
 
 // ============================================================================

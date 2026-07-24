@@ -111,6 +111,9 @@ void MainWindow::setupConnections()
     connect(ui->cmbSourceType, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onSourceTypeChanged);
 
+    connect(ui->cmbDetectionMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onDetectionModeChanged);
+
     connect(ui->sliderBright,   &QSlider::valueChanged, this, &MainWindow::onBrightnessChanged);
     connect(ui->sliderContrast, &QSlider::valueChanged, this, &MainWindow::onContrastChanged);
 
@@ -609,11 +612,13 @@ void MainWindow::updateRunState(RunState state)
         ui->btnStart->setEnabled(true);
         ui->btnStop->setEnabled(false);
         ui->btnBrowse->setEnabled(true);
+        ui->cmbDetectionMode->setEnabled(true);
         break;
     case RunState::Running:
         ui->btnStart->setEnabled(false);
         ui->btnStop->setEnabled(true);
         ui->btnBrowse->setEnabled(false);
+        ui->cmbDetectionMode->setEnabled(false);
         // 运行中强制关闭观察 ROI
         if (m_observeRoiEnabled)
         {
@@ -631,6 +636,7 @@ void MainWindow::updateRunState(RunState state)
         ui->btnStart->setEnabled(true);
         ui->btnStop->setEnabled(false);
         ui->btnBrowse->setEnabled(true);
+        ui->cmbDetectionMode->setEnabled(true);
         break;
     }
 
@@ -738,6 +744,32 @@ void MainWindow::updateParamLabels()
     }
 }
 
+// ============================================================================
+// 检测模式切换（仅 UI 层：三视图标题 + 参数面板切换）
+// ============================================================================
+
+void MainWindow::onDetectionModeChanged(int index)
+{
+    if (m_runState == RunState::Running)
+        return;
+
+    m_detectionMode = (index == 0) ? DetectionMode::Traditional
+                                   : DetectionMode::DeepLearning;
+
+    updateViewLabelsForMode(m_detectionMode);
+    updateParamLabels();
+}
+
+void MainWindow::updateViewLabelsForMode(DetectionMode mode)
+{
+    bool isDL = (mode == DetectionMode::DeepLearning);
+
+    ui->groupSpectrum->setTitle(isDL ? "异常热力图" : "频谱图");
+    ui->groupFlatness->setTitle(isDL ? "模型检测结果" : "平坦图");
+
+    ui->groupParams->setVisible(!isDL);
+    ui->groupDLParams->setVisible(isDL);
+}
 // ============================================================================
 // 显示刷新
 // ============================================================================

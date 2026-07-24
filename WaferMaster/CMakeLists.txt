@@ -35,6 +35,7 @@ set(SOURCES
     src/Logger.cpp
     src/CommunicationManager.cpp
     src/ResultLogger.cpp
+    src/DeepWaferDetector.cpp
 )
 
 set(HEADERS
@@ -46,6 +47,7 @@ set(HEADERS
     include/Logger.h 
     include/CommunicationManager.h
     include/ResultLogger.h
+    include/DeepWaferDetector.h
 )
 
 set(UIS
@@ -63,6 +65,12 @@ add_executable(WaferMaster ${SOURCES} ${HEADERS} ${GENERATED_UI_HDRS}
 # 将 CMake 构建目录加入 include 路径，使 IDE/IntelliSense 能找到自动生成的 ui_*.h
 target_include_directories(WaferMaster PRIVATE ${CMAKE_BINARY_DIR})
 
+# ============================================================================
+# ONNX Runtime
+# ============================================================================
+set(ONNXRUNTIME_ROOT "${CMAKE_SOURCE_DIR}/onnxruntime")
+target_include_directories(WaferMaster PRIVATE "${ONNXRUNTIME_ROOT}/include")
+
 # 链接库
 target_link_libraries(WaferMaster
     PRIVATE
@@ -72,6 +80,7 @@ target_link_libraries(WaferMaster
     Qt6::Sql
     ${OpenCV_LIBS}
     spdlog::spdlog
+    "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
 )
 
 # 编译后自动拷贝 OpenCV DLL 到输出目录
@@ -97,3 +106,15 @@ if(MSVC)
     target_compile_options(WaferMaster PRIVATE /W4 /utf-8)
     add_definitions(-D_USE_MATH_DEFINES)
 endif()
+
+# 运行时部署 ONNX Runtime DLL + 模型文件
+add_custom_command(TARGET WaferMaster POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
+        "$<TARGET_FILE_DIR:WaferMaster>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:WaferMaster>/models"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/models/model_fp16.onnx"
+        "$<TARGET_FILE_DIR:WaferMaster>/models/model_fp16.onnx"
+    COMMENT "Deploying ONNX Runtime DLL and model")

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>785</width>
-    <height>595</height>
+    <width>831</width>
+    <height>849</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -64,7 +64,7 @@ QGroupBox#groupComm QLabel {
 QPlainTextEdit#plainTextEditLog {
     background-color: #1e1e2e;
     color: #cdd6f4;
-    font-family: "Consolas", "Courier New", monospace;
+    font-family: &quot;Consolas&quot;, &quot;Courier New&quot;, monospace;
     font-size: 9pt;
     border: 1px solid #313244;
     border-radius: 4px;
@@ -223,6 +223,24 @@ QStatusBar {
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_2">
            <item>
+            <widget class="QComboBox" name="cmbDetectionMode">
+             <property name="styleSheet">
+              <string notr="true">background-color: rgb(20, 255, 255);
+color: rgb(255, 255, 255);</string>
+             </property>
+             <item>
+              <property name="text">
+               <string>传统OpenCV</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>PatchCore</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="btnStart">
              <property name="text">
               <string>开始检测</string>
@@ -236,28 +254,28 @@ QStatusBar {
              </property>
             </widget>
            </item>
-            <item>
-             <widget class="QPushButton" name="btnObserveRoi">
-              <property name="text">
-               <string>启用ROI观察</string>
-              </property>
-              <property name="checkable">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btnQueryHistory">
-              <property name="text">
-               <string>历史查询</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="groupView">
+           <item>
+            <widget class="QPushButton" name="btnObserveRoi">
+             <property name="text">
+              <string>启用ROI观察</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnQueryHistory">
+             <property name="text">
+              <string>历史查询</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupView">
           <property name="title">
            <string>显示增强</string>
           </property>
@@ -313,78 +331,125 @@ QStatusBar {
              </property>
             </widget>
            </item>
-            <item>
-             <widget class="QLabel" name="lblHotRatioThresh">
-              <property name="text">
-               <string>HotRatio阈值: -</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblP95Thresh">
-              <property name="text">
-               <string>P95阈值: -</string>
-              </property>
-             </widget>
-            </item>
-             <item>
-              <widget class="QLabel" name="lblObserveRoiInfo">
-              <property name="text">
-               <string>观察ROI: -</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="groupComm">
-           <property name="title">
-            <string>通信状态</string>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_10">
-            <item>
-             <widget class="QLabel" name="lblCommMode">
-              <property name="text">
-               <string>模式: TCP Server</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblCommAddress">
-              <property name="text">
-               <string>地址: 127.0.0.1</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblCommPort">
-              <property name="text">
-               <string>端口: 9000</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblCommListenState">
-              <property name="text">
-               <string>状态: 未监听</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="lblCommClientState">
-              <property name="text">
-               <string>客户端: 未连接</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
+           <item>
+            <widget class="QLabel" name="lblHotRatioThresh">
+             <property name="text">
+              <string>HotRatio阈值: -</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblP95Thresh">
+             <property name="text">
+              <string>P95阈值: -</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblObserveRoiInfo">
+             <property name="text">
+              <string>观察ROI: -</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupDLParams">
+          <property name="title">
+           <string>DL模型参数</string>
+          </property>
+          <property name="visible">
+           <bool>false</bool>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_dl">
+           <item>
+            <widget class="QLabel" name="lblDLScore">
+             <property name="text">
+              <string>AnomalyScore: -</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDLGoodTh">
+             <property name="text">
+              <string>Good阈值: 0.54</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDLNgTh">
+             <property name="text">
+              <string>NG阈值: 0.72</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDLInferMs">
+             <property name="text">
+              <string>推理耗时: - ms</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblDLObserveRoi">
+             <property name="text">
+              <string>观察ROI: -</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupComm">
+          <property name="title">
+           <string>通信状态</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_10">
+           <item>
+            <widget class="QLabel" name="lblCommMode">
+             <property name="text">
+              <string>模式: TCP Server</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblCommAddress">
+             <property name="text">
+              <string>地址: 127.0.0.1</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblCommPort">
+             <property name="text">
+              <string>端口: 9000</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblCommListenState">
+             <property name="text">
+              <string>状态: 未监听</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="lblCommClientState">
+             <property name="text">
+              <string>客户端: 未连接</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <spacer name="verticalSpacer">
         <property name="orientation">
          <enum>Qt::Orientation::Vertical</enum>
         </property>
@@ -399,134 +464,134 @@ QStatusBar {
      </layout>
     </item>
     <item>
-      <layout class="QGridLayout" name="gridLayout" rowstretch="1,1" columnstretch="1,1">
-       <item row="0" column="0">
-        <widget class="QGroupBox" name="groupOriginal">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
+     <layout class="QGridLayout" name="gridLayout" rowstretch="1,1" columnstretch="1,1">
+      <item row="0" column="0">
+       <widget class="QGroupBox" name="groupOriginal">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="title">
          <string>原图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_8">
          <item>
-           <widget class="QLabel" name="lblViewOriginal">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>320</width>
-              <height>240</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>原图显示区</string>
-            </property>
-           </widget>
+          <widget class="QLabel" name="lblViewOriginal">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>320</width>
+             <height>152</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>原图显示区</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
       </item>
       <item row="0" column="1">
-        <widget class="QGroupBox" name="groupSpectrum">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="title">
+       <widget class="QGroupBox" name="groupSpectrum">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="title">
          <string>频谱图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_9">
          <item>
-           <widget class="QLabel" name="lblViewSpectrum">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>320</width>
-              <height>240</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>频谱图显示区</string>
-            </property>
-           </widget>
+          <widget class="QLabel" name="lblViewSpectrum">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>320</width>
+             <height>152</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>频谱图显示区</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
       </item>
       <item row="1" column="0">
-        <widget class="QGroupBox" name="groupFlatness">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="title">
+       <widget class="QGroupBox" name="groupFlatness">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="title">
          <string>平坦图</string>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_7">
          <item>
-           <widget class="QLabel" name="lblViewFlatness">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>320</width>
-              <height>240</height>
-             </size>
-            </property>
-            <property name="text">
-             <string>平坦图显示区</string>
-            </property>
-           </widget>
+          <widget class="QLabel" name="lblViewFlatness">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>320</width>
+             <height>152</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>平坦图显示区</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
       </item>
-       <item row="1" column="1">
-        <widget class="QPlainTextEdit" name="plainTextEditLog">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-         <property name="maximumBlockCount">
-          <number>200</number>
-         </property>
-         <property name="placeholderText">
-          <string>日志输出...</string>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>160</height>
-          </size>
-         </property>
-        </widget>
-       </item>
+      <item row="1" column="1">
+       <widget class="QPlainTextEdit" name="plainTextEditLog">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>160</height>
+         </size>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="maximumBlockCount">
+         <number>200</number>
+        </property>
+        <property name="placeholderText">
+         <string>日志输出...</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </item>
    </layout>
@@ -536,7 +601,7 @@ QStatusBar {
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>785</width>
+     <width>831</width>
      <height>22</height>
     </rect>
    </property>
