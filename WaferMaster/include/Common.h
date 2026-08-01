@@ -113,8 +113,8 @@ struct AlgoResult
 struct DLconfig
 {
     QString modelPath;                 // ONNX 模型文件路径
-    int     inputSize       = 256;   // 模型输入尺寸
-    float   goodThreshold   = 0.5409f;// Good/NG 判定阈值
+    int     inputSize       = 256;     // 模型输入尺寸
+    float   goodThreshold   = 0.5409f; // Good/NG 判定阈值
     float   ngThreshold     = 0.7231f;
 };
 
