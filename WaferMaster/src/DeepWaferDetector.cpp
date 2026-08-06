@@ -24,10 +24,10 @@ bool DeepWaferDetector::loadModel(const std::string& modelPath)
         opts.SetGraphOptimizationLevel(ORT_ENABLE_ALL);        // 图优化级别
 
         // 用配置创建 Session（= 加载模型文件到内存）
+        // ONNX Runtime 1.27+ Windows 需要 wchar_t* 路径
+        std::wstring wpath(modelPath.begin(), modelPath.end());
         m_session = std::make_unique<Ort::Session>(
-            m_env,              // 运行环境（整个程序共享一个）
-            modelPath.c_str(),  // 文件路径
-            opts);              
+            m_env, wpath.c_str(), opts);   
          Logger::get()->info("Loaded model from {}", modelPath);
 
         return true;
@@ -109,8 +109,9 @@ try
     //3 推理←→ 把数据喂给模型，取回分数和热力图
     const char* inputnames[] = {"input"}; // 输入节点名
     const char* outputnames[] = {"pred_score", "anomaly_map"}; // 输出节点名（与模型预设必须一致！）
-    auto outputs =m_session->Run                     //创建一堆张量的集合std::vector<Ort::Value>
-    (Ort::RunOptions{nullptr}, inputnames, &inputTensor, 1, outputnames, 2);//outputs.size() == 2
+    Ort::RunOptions run_options;  // 默认构造，创建有效配置（不能传 nullptr）
+    auto outputs = m_session->Run( //创建一堆张量的集合std::vector<Ort::Value>
+        run_options, inputnames, &inputTensor, 1, outputnames, 2);//outputs.size() == 2
     
   // ══════════════════════════════════════════════
      //拆包结果

@@ -35,6 +35,24 @@ void WaferAlgorithm::setFrameProducer(FrameProducer* producer)
     m_producer = producer;
 }
 
+void WaferAlgorithm::setDetectionMode(DetectionMode mode)
+{
+    m_detectionMode = mode;
+}
+
+// ============================================================================
+// 模型加载
+// ============================================================================
+bool WaferAlgorithm::loadDLModel(const DLconfig& config)
+{
+    m_deepdetector.setDLconfig(config);// 注入配置（阈值、输入尺寸）
+    return m_deepdetector.loadModel(config.modelPath.toStdString());// 加载 ONNX 模型
+
+}
+bool WaferAlgorithm::isDLModelLoaded() const
+{
+    return m_deepdetector.isLoaded();
+}
 // ============================================================================
 // 公有槽
 // ============================================================================
@@ -60,10 +78,28 @@ void WaferAlgorithm::processPendingFrames()
             break;   // 队列空，直接返回
         // 计时：精确测量这一帧的纯算法耗时 
         auto t0 = std::chrono::steady_clock::now();
-        AlgoResult result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+
+    // 按检测模式选择算法路径
+    AlgoResult result;
+    if (m_detectionMode == DetectionMode::DeepLearning && m_deepdetector.isLoaded())
+    {
+        result = m_deepdetector.processFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+    }
+    else
+    {
+         result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);}
         auto t1 = std::chrono::steady_clock::now();
         auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-        // 日志调用 1：debug 级别 — 每帧性能快照
+    //按不同模式记录日志
+    if (m_detectionMode == DetectionMode::DeepLearning)
+    {
+         Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
+                packet.frameIdx, result.anomalyScore,
+                detectionLevelToString(result.level).toStdString(),
+                result.inferenceTimeMs);
+    }
+    else
+{       // 日志调用 1：debug 级别 — 每帧性能快照
         Logger::get()->debug("Frame #{} processed in {} us, FI={:.2f}, HotRatio={:.2f}%, Level={}",
             packet.frameIdx, elapsedUs, result.fi, result.hotRatio,
             detectionLevelToString(result.level).toStdString());
@@ -71,9 +107,10 @@ void WaferAlgorithm::processPendingFrames()
         if (result.level == DetectionLevel::Ng)
             Logger::get()->warn("NG Frame #{}: FI={:.2f}, P95={:.2f}, HotRatio={:.2f}%",
                 packet.frameIdx, result.fi, result.p95, result.hotRatio);
-
+}
         emit resultReady(result);
-    }
+    
+}
 }
 
 void WaferAlgorithm::stop()

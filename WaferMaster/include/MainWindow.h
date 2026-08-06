@@ -197,12 +197,15 @@ private:
     /// @return 填充完整的 SourceConfig
     SourceConfig buildSourceConfig() const;
 
+    /// @brief 配置深度学习检测：加载 ONNX 模型 + 注入检测模式
+    void buildDeepLearning();
+
     /// @brief 更新运行状态，并同步调整 UI 控件启用/禁用
     ///        Idle→启用开始/浏览；Running→启用停止，禁用开始；Stopped→恢复开始/浏览
     /// @param state 新的运行状态
     void updateRunState(RunState state);
 
-    /// @brief 更新状态栏文本：路径、分辨率、帧号、FI、P95、HotRatio、Level、运行状态
+    /// @brief 更新状态栏文本：路径、分辨率、帧号、运行状态，根据检测模式显示不同指标
     void updateStatusBarText();
     
     /// @brief 刷新参数显示标签：lblAlgoRoi / lblFiThresh / lblHotRatioThresh / lblObserveRoiInfo
@@ -274,7 +277,8 @@ private:
     RunState        m_runState    = RunState::Idle; // 当前运行状态
     SourceConfig    m_sourceConfig;                  // 当前输入源配置（从 UI 收集）
     AlgoResult      m_lastResult;                    // 最后一帧的算法结果（用于观察 ROI 裁切和状态栏刷新）
-    AlgoConfig      m_currentAlgoCfg;                // 当前算法配置（阈值，供左侧参数面板显示）
+    AlgoConfig      m_currentAlgoCfg;                // 当前传统算法配置（阈值，供左侧参数面板显示）
+    DLconfig        m_dlconfig;                     // 当前深度学习配置（模型路径、输入尺寸、阈值，供左侧参数面板显示）
 
     // ========================================================================
     // 成员变量 — 显示状态
@@ -311,5 +315,5 @@ private:
     // ========================================================================
     // 成员变量 — 检测模式
     // ========================================================================
-    DetectionMode m_detectionMode = DetectionMode::Traditional;
-};
+    DetectionMode m_detectionMode = DetectionMode::Traditional;// 当前检测模式（由 UI 控件切换，注入算法层）
+}; 

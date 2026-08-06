@@ -165,6 +165,21 @@ void MainWindow::setupCommunication()
     m_comm->startServer(QHostAddress::LocalHost, 9000);//启动 TCP 服务器，监听本地回环地址
 }
 
+void MainWindow::buildDeepLearning()
+{
+    // 模型路径：exe 同目录的 models/ 下（由 CMake POST_BUILD 自动复制）
+    m_dlconfig.modelPath = QCoreApplication::applicationDirPath()
+                    + QStringLiteral("/models/model_fp16.onnx");
+
+    m_algorithm->loadDLModel(m_dlconfig);
+    m_algorithm->setDetectionMode(m_detectionMode);// 把 UI 的选择，通过函数调用，复制给算法对象内部
+
+    if (m_algorithm->isDLModelLoaded())
+        Logger::get()->info("PatchCore model loaded, DL mode available");
+    else
+        Logger::get()->warn("PatchCore model unavailable, DL mode disabled");
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // 结果记录初始化：CSV + SQLite 双写
 // ═══════════════════════════════════════════════════════════════════
@@ -194,27 +209,26 @@ void MainWindow::initResultLogger(StorageMode mode,
 void MainWindow::cleanupWorkers()
 {
     // 先停采集再停算法，确保不再有新帧入队
-    if (m_producer)
+    if (m_producer && m_producerThread && m_producerThread->isRunning())
     {
         //通过 Qt 的元对象系统（QMetaObject）调用 m_producer 的 stop() 方法，使用排队执行确保跨线程调用安全
-        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop,  Qt::BlockingQueuedConnection);
     }
-    if (m_algorithm)
+    if (m_algorithm && m_algorithmThread && m_algorithmThread->isRunning())
     {
-        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop,  Qt::BlockingQueuedConnection);
     }
 
     // 等待线程退出（quit() 会处理完已排队的 invokeMethod 调用再退出）
-    // QTimer 驱动版 stop() 立即中断，wait(500) 绰绰有余
     if (m_producerThread && m_producerThread->isRunning())//如果线程存在且正在运行
     {
         m_producerThread->quit();
-        m_producerThread->wait(500);
+        m_producerThread->wait();
     }
     if (m_algorithmThread && m_algorithmThread->isRunning())
     {
         m_algorithmThread->quit();
-        m_algorithmThread->wait(500);
+        m_algorithmThread->wait();
     }
 /*
 为什么 QThread 用 `deleteLater` 而 Worker 用 `delete`：
@@ -308,6 +322,8 @@ void MainWindow::onStartClicked()
     // 先创建 Algorithm，再创建 Producer
     m_algorithm = new WaferAlgorithm();
     m_producer = new FrameProducer();
+ 
+    buildDeepLearning(); // m_algorithm 创建后初始化深度学习检测
 
     // 迁移到各自线程
     m_producer->moveToThread(m_producerThread);
@@ -674,17 +690,28 @@ void MainWindow::updateStatusBarText()
         text += QStringLiteral("帧: %1").arg(m_lastResult.frameIdx);
     }
 
-    // FI
-    if (!text.isEmpty()) text += QStringLiteral(" | ");
-    text += QStringLiteral("FI: %1").arg(m_lastResult.fi, 0, 'f', 2);
+    // 按模式显示指标
+    if (m_lastResult.mode == DetectionMode::DeepLearning)
+    {
+        if (!text.isEmpty()) text += QStringLiteral(" | ");
+        text += QStringLiteral("Score: %1").arg(m_lastResult.anomalyScore, 0, 'f', 3);
+        if (!text.isEmpty()) text += QStringLiteral(" | ");
+        text += QStringLiteral("%1ms").arg(m_lastResult.inferenceTimeMs);
+    }
+    else
+    {
+        // FI
+        if (!text.isEmpty()) text += QStringLiteral(" | ");
+        text += QStringLiteral("FI: %1").arg(m_lastResult.fi, 0, 'f', 2);
 
-    // P95
-    if (!text.isEmpty()) text += QStringLiteral(" | ");
-    text += QStringLiteral("P95: %1").arg(m_lastResult.p95, 0, 'f', 1);
+        // P95
+        if (!text.isEmpty()) text += QStringLiteral(" | ");
+        text += QStringLiteral("P95: %1").arg(m_lastResult.p95, 0, 'f', 1);
 
-    // HotRatio
-    if (!text.isEmpty()) text += QStringLiteral(" | ");
-    text += QStringLiteral("Hot: %1%").arg(m_lastResult.hotRatio, 0, 'f', 1);
+        // HotRatio
+        if (!text.isEmpty()) text += QStringLiteral(" | ");
+        text += QStringLiteral("Hot: %1%").arg(m_lastResult.hotRatio, 0, 'f', 1);
+    }
 
     // Level
     if (!text.isEmpty()) text += QStringLiteral(" | ");
@@ -704,6 +731,17 @@ void MainWindow::updateStatusBarText()
 
 void MainWindow::updateParamLabels()
 {
+    // —— DL 模式：显示 DL 参数 ——
+    if (m_lastResult.mode == DetectionMode::DeepLearning)
+    {
+        ui->lblDLScore->setText(
+            QString("AnomalyScore: %1").arg(m_lastResult.anomalyScore, 0, 'f', 3));
+        ui->lblDLInferMs->setText(
+            QString("推理耗时: %1 ms").arg(m_lastResult.inferenceTimeMs));
+        return;
+    }
+
+    // —— 传统模式：显示 OpenCV 参数 ——
     // 算法 ROI 矩形
     if (m_lastResult.algoRoiRect.isValid())
     {

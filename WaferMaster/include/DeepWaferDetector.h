@@ -12,7 +12,8 @@ public:
     DeepWaferDetector();
     ~DeepWaferDetector();
 
-
+    ///@brief 注入深度学习配置（阈值、输入尺寸）
+  void setDLconfig(const DLconfig& config) { m_config = config; };
     /// @brief 初始化 ONNX Runtime 环境和会话
   bool loadModel(const std::string& modelPath);
     /// @brief 检查模型是否已加载

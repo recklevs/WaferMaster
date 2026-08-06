@@ -3,30 +3,34 @@
 #include <QObject>
 #include <QString>
 #include "Common.h"
+#include "DeepWaferDetector.h"
 
 class FrameProducer;
 
 /**  @brief 算法层：平坦度检测主链，对每一帧执行
-          灰度→warpPolar→DFT→带通掩膜→IDFT→FI/p95/HotRatio→classify
+          传统模式：灰度→warpPolar→DFT→带通掩膜→IDFT→FI/p95/HotRatio→classify
+          DL 模式：调用 DeepWaferDetector 做 ONNX 推理
+          模式由 MainWindow 通过 setDetectionMode() 注入
 
 ## WaferAlgorithm 工作流程
 
-1. setAlgoConfig() — 设好阈值参数（fi/p95/hotRatio/ROI比例/带通比例）
+1. setAlgoConfig() — 设好传统算法阈值参数
 
 2. setFrameProducer() — 注入采集层指针，用于拉帧
 
-3. frameAvailable() 信号触发 → processPendingFrames() 槽被调用
+3. setDetectionMode() — 选择 Traditional / DeepLearning
+
+4. loadDLModel() — DL 模式下加载 ONNX 模型（可选）
+
+5. frameAvailable() 信号触发 → processPendingFrames() 槽被调用
      │
      ├─ 循环调用 m_producer->tryDequeueFrame() 拉帧
      │
-4. processSingleFrame() — 执行完整算法主链：
-     │  灰度 → warpPolar → DFT → shiftDFT 频谱中心化
-     │  → 圆环带通掩膜 → IDFT → makeCentralRoi 生成算法ROI
-     │  → percentile95 统计 → FI + p95 + HotRatio
+     ├─ DeepLearning 模式 → m_deepdetector.processFrame()（ONNX 推理）
      │
-5. classify() — 根据三指标阈值判定 Good/Warning/NG
+     ├─ Traditional 模式 → processSingleFrame()（传统算法主链）
      │
- 6. resultReady() — 发出 AlgoResult（含 original/spectrum/flatness 三图）
+6. resultReady() — 发出 AlgoResult（含 original/spectrum/flatness 三图）
       │
  7. stop() → m_running=false → processPendingFrames() 循环退出
       │
@@ -48,6 +52,13 @@ public:
     /// @brief 注入采集层指针，供 processPendingFrames() 拉帧使用
     /// @param producer FrameProducer 实例指针（由 MainWindow 创建并迁移线程后传入）
     void setFrameProducer(FrameProducer* producer);
+
+    /// @brief 设置检测模式（Traditional / DeepLearning）
+    void setDetectionMode(DetectionMode mode);
+    /// @brief 加载 DL 模型
+    bool loadDLModel(const DLconfig& config);
+    /// @brief 模型是否已加载
+    bool isDLModelLoaded() const;
 
 public slots:
     /// @brief 启动算法处理（重置运行标志，允许 processPendingFrames 再次被唤醒）
@@ -84,8 +95,8 @@ private:
     // 算法主链入口
     // ========================================================================
 
-    /**  @brief 对单帧执行完整算法主链（承接 Project2 算法语义）
-    算法步骤：
+    /**  @brief 对单帧执行完整OpenCV处理
+    传统算法步骤：
        1. 灰度转换
        2. warpPolar 极坐标变换
        3. DFT 傅里叶变换 → shiftDFT 频谱中心化
@@ -133,4 +144,6 @@ private:
     AlgoConfig      m_config;              // 算法参数配置（阈值/ROI比例/带通比例）
     FrameProducer*  m_producer = nullptr;  // 采集层指针（用于拉帧，不持有所有权）
     bool            m_running = true;      // 运行标志（构造初始为 true，stop() 置 false）
+    DetectionMode   m_detectionMode = DetectionMode::Traditional; // 检测模式（Traditional / DeepLearning）
+    DeepWaferDetector m_deepdetector;        // 深度学习检测器
 };
