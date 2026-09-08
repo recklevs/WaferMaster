@@ -9,12 +9,12 @@ set(CMAKE_AUTOMOC ON)
 # set(CMAKE_AUTOUIC ON)  # 关闭：使用 qt_wrap_ui 替代，避免 .ui 文件路径查找问题
 set(CMAKE_AUTORCC ON)
 
-# 配置 OpenCV 路径 (D盘)
-set(OpenCV_DIR "D:/opencv/opencv/build") 
+# 配置 OpenCV 路径
+set(OpenCV_DIR "F:/opencv/opencv/build")
 find_package(OpenCV REQUIRED)
 
 # 查找 Qt 6 组件
-set(CMAKE_PREFIX_PATH "E:/Qt/6.10.2/msvc2022_64")
+set(CMAKE_PREFIX_PATH "G:/qt/6.10.2/msvc2022_64")
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Sql)
 
 # 引入 spdlog (本地源码 v1.14.1)
@@ -84,7 +84,7 @@ target_link_libraries(WaferMaster
 )
 
 # 编译后自动拷贝 OpenCV DLL 到输出目录
-set(OPENCV_BIN_DIR "D:/opencv/opencv/build/x64/vc16/bin")
+set(OPENCV_BIN_DIR "F:/opencv/opencv/build/x64/vc16/bin")
 add_custom_command(TARGET WaferMaster POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${OPENCV_BIN_DIR}/opencv_world4120d.dll"
@@ -94,7 +94,7 @@ add_custom_command(TARGET WaferMaster POST_BUILD
 )
 
 # 编译后自动部署 Qt 运行时 DLL（windeployqt）
-set(QT_DEPLOY_EXE "E:/Qt/6.10.2/msvc2022_64/bin/windeployqt.exe")
+set(QT_DEPLOY_EXE "G:/qt/6.10.2/msvc2022_64/bin/windeployqt.exe")
 add_custom_command(TARGET WaferMaster POST_BUILD
     COMMAND ${QT_DEPLOY_EXE} --no-translations --no-system-d3d-compiler
             "$<TARGET_FILE:WaferMaster>"
@@ -115,6 +115,6 @@ add_custom_command(TARGET WaferMaster POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_FILE_DIR:WaferMaster>/models"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/models/model_fp16.onnx"
-        "$<TARGET_FILE_DIR:WaferMaster>/models/model_fp16.onnx"
+        "${CMAKE_SOURCE_DIR}/models/model_curved_fringe.onnx"
+        "$<TARGET_FILE_DIR:WaferMaster>/models/model_curved_fringe.onnx"
     COMMENT "Deploying ONNX Runtime DLL and model")

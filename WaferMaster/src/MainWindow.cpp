@@ -167,9 +167,9 @@ void MainWindow::setupCommunication()
 
 void MainWindow::buildDeepLearning()
 {
-    // 模型路径：exe 同目录的 models/ 下（由 CMake POST_BUILD 自动复制）
+    // 模型路径：exe 同目录的 models/ 下，由 CMake POST_BUILD 自动复制
     m_dlconfig.modelPath = QCoreApplication::applicationDirPath()
-                    + QStringLiteral("/models/model_fp16.onnx");
+                    + QStringLiteral("/models/model_curved_fringe.onnx");
 
     m_algorithm->loadDLModel(m_dlconfig);
     m_algorithm->setDetectionMode(m_detectionMode);// 把 UI 的选择，通过函数调用，复制给算法对象内部
@@ -209,26 +209,27 @@ void MainWindow::initResultLogger(StorageMode mode,
 void MainWindow::cleanupWorkers()
 {
     // 先停采集再停算法，确保不再有新帧入队
-    if (m_producer && m_producerThread && m_producerThread->isRunning())
+    if (m_producer)
     {
         //通过 Qt 的元对象系统（QMetaObject）调用 m_producer 的 stop() 方法，使用排队执行确保跨线程调用安全
-        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop,  Qt::BlockingQueuedConnection);
+        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop, Qt::QueuedConnection);
     }
-    if (m_algorithm && m_algorithmThread && m_algorithmThread->isRunning())
+    if (m_algorithm)
     {
-        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop,  Qt::BlockingQueuedConnection);
+        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop, Qt::QueuedConnection);
     }
 
     // 等待线程退出（quit() 会处理完已排队的 invokeMethod 调用再退出）
+    // QTimer  stop() 立即中断，wait(500) 绰绰有余
     if (m_producerThread && m_producerThread->isRunning())//如果线程存在且正在运行
     {
         m_producerThread->quit();
-        m_producerThread->wait();
+        m_producerThread->wait(500);
     }
     if (m_algorithmThread && m_algorithmThread->isRunning())
     {
         m_algorithmThread->quit();
-        m_algorithmThread->wait();
+        m_algorithmThread->wait(500);
     }
 /*
 为什么 QThread 用 `deleteLater` 而 Worker 用 `delete`：

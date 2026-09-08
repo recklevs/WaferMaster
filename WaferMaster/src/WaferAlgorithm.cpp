@@ -91,7 +91,7 @@ void WaferAlgorithm::processPendingFrames()
         auto t1 = std::chrono::steady_clock::now();
         auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     //按不同模式记录日志
-    if (m_detectionMode == DetectionMode::DeepLearning)
+    if (m_detectionMode == DetectionMode::DeepLearning && m_deepdetector.isLoaded())
     {
          Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
                 packet.frameIdx, result.anomalyScore,

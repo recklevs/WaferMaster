@@ -39,17 +39,22 @@ bool DeepWaferDetector::loadModel(const std::string& modelPath)
     }
 }
 
-cv::Mat DeepWaferDetector::preprocess(const cv::Mat& gray) const
+cv::Mat DeepWaferDetector::preprocess(const cv::Mat& input) const
 {
-  cv::Mat  rgb;
-  cv::cvtColor(gray,rgb,cv::COLOR_GRAY2RGB); // 灰度 → 3通道RGB
-  
-  cv::Mat resized;
-  cv::resize(rgb, resized, cv::Size(m_config.inputSize, m_config.inputSize)); // resize 256×256   
-  resized.convertTo(resized, CV_32F, 1.0 / 255.0); // float[0,1]
+    cv::Mat rgb;
+    if (input.channels() == 3)
+        rgb = input; // 实验：保持 BGR 原样
+    else
+        cv::cvtColor(input, rgb, cv::COLOR_GRAY2RGB); // 灰度兜底 → 3通道RGB
 
-  cv::Mat nchw;
-  cv::dnn::blobFromImage(resized, nchw);//OpenCV 存图：H×W×C（高×宽×通道） → NCHW（批×通道×高×宽）
+    cv::Mat resized;
+    cv::resize(rgb, resized, cv::Size(m_config.inputSize, m_config.inputSize)); // 256×256
+
+    resized.convertTo(resized, CV_32F, 1.0 / 255.0); // [0,1] 归一化（与训练/验证一致）
+
+    cv::Mat nchw;
+    cv::dnn::blobFromImage(resized, nchw); // HWC → NCHW
+
     return nchw;
 }
 
@@ -78,12 +83,16 @@ AlgoResult DeepWaferDetector::processFrame(const cv::Mat& frame,qint64 frameIdx,
         return result;
     }
 
-    // 统一转灰度
+    // 显示用灰度（叠加热力图时用）
     cv::Mat gray;
     if (frame.channels() == 3)
         cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     else
         gray = frame;
+
+    // 喂给模型的输入：保留彩色（训练数据可能含颜色信息，灰度化会丢失特征）
+    // 若帧本身是灰度图，preprocess 内部会自动转 3 通道
+    cv::Mat modelInput = frame;
 
   auto t0 = std::chrono::steady_clock::now();// 计时：推理开始
 
@@ -93,8 +102,8 @@ try
     //ONNX Runtime 推理
   // ══════════════════════════════════════════════
 
-    //1 预处理：灰度到 NCHW
-    cv::Mat nchw=preprocess(gray);
+    //1 预处理：BGR/灰度 → NCHW
+    cv::Mat nchw=preprocess(modelInput);
 
     //2 打包成onnx认识的输入张量
     std::array<int64_t,4> intputshape{1,3,m_config.inputSize,m_config.inputSize};
@@ -157,11 +166,7 @@ catch(const std::exception& e)
 
    auto t1 = std::chrono::steady_clock::now();// 计时：推理结束
    result.inferenceTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-   
-   Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
-    frameIdx, result.anomalyScore,
-    detectionLevelToString(result.level).toStdString(),
-    result.inferenceTimeMs);
+   // 帧日志由 WaferAlgorithm::processPendingFrames() 统一打印，避免每帧重复
 
    return result;
 
