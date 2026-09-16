@@ -59,7 +59,8 @@ bool WaferAlgorithm::isDLModelLoaded() const
 
 void WaferAlgorithm::start()
 {
-    m_running = true;
+    // 算法线程启动后允许处理帧。
+    m_running.store(true);
 }
 
 void WaferAlgorithm::processPendingFrames()
@@ -71,7 +72,7 @@ void WaferAlgorithm::processPendingFrames()
     }
 
     FramePacket packet;
-    while (m_running)
+    while (m_running.load()) // 原子读取停止标志
     {
         // 从队列取一帧非阻塞
         if (!m_producer->tryDequeueFrame(packet))
@@ -115,7 +116,8 @@ void WaferAlgorithm::processPendingFrames()
 
 void WaferAlgorithm::stop()
 {
-    m_running = false;
+    // Qt 槽版本；主线程可直接调用 requestStop()，避免等待事件队列。
+    m_running.store(false);
     emit finished();
 }
 

@@ -20,29 +20,38 @@ namespace Ui {
 class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
 }
 
-/**  @brief 表现层：主窗口，负责线程编排、显示刷新、状态管理、观察 ROI 交互
-          不负责采集和算法，不写 CSV
-
-## MainWindow 工作流程
-
-###  主链路
- 1. 构造 → setupUiState() 初始化 UI 控件初始状态
- 2. setupWorkers() 创建两条空 QThread（Worker 对象在 onStartClicked() 全量重建）
- 3. setupConnections() 建立信号槽连接（采集→算法→显示）
- 4. 用户点击"开始检测" → onStartClicked() → 注入配置 → 启动线程
- 5. 算法结果到达 → onAlgorithmResultReady() → refreshMainViews()→ updateStatusBarText()                              
- 6. 用户点击"停止检测" → onStopClicked() → 停止线程 → cleanupWorkers()
-###  观察 ROI
- 7. eventFilter() 在原图 QLabel 上捕获鼠标框选交互
- 8. imageDisplayRect() 将 QLabel 像素坐标映射到实际图像像素坐标
- 9. refreshObserveRoiViews() 裁出 ROI 原图 + ROI 平坦图 → 推送到 RoiViewerDialog 弹窗
- 10. 观察 ROI 仅在 Idle / Stopped 状态可用，Running 时自动禁用
-
-### 线程安全
- - 主线程操作所有 QWidget / QLabel / QStatusBar
- - FrameProducer 和 WaferAlgorithm 通过 moveToThread() 迁移到独立线程
- - 跨线程 cv::Mat 已由算法层 clone() 确保独立所有权
-*/
+/**
+ * @brief 表现层：负责界面、线程编排、结果显示和状态管理。
+ *
+ * MainWindow 不直接执行图像采集和算法处理。
+ *
+ * 主流程：
+ *   1. 构造窗口并初始化 UI；
+ *   2. setupWorkers() 创建两条 QThread；
+ *   3. setupConnections() 只连接 UI 控件和主窗口；
+ *   4. 用户点击“开始检测”；
+ *      - 读取界面参数；
+ *      - 清理旧线程和 Worker；
+ *      - 创建新的 FrameProducer 和 WaferAlgorithm；
+ *      - 加载深度学习模型；
+ *      - 将 Worker 移动到对应线程；
+ *      - 建立跨线程信号连接；
+ *      - 注入配置并启动线程；
+ *   5. FrameProducer 产生帧；
+ *   6. WaferAlgorithm 处理帧并发出结果；
+ *   7. MainWindow 刷新图像、状态和日志；
+ *   8. 用户点击“停止检测”；
+ *      - 同步停止采集；
+ *      - 原子请求算法停止；
+ *      - quit() + wait() 等待线程退出；
+ *      - 释放 Worker 和线程对象。
+ *
+ * 观察 ROI：
+ *   1. 用户在原图上框选区域；
+ *   2. 将界面坐标转换为图像坐标；
+ *   3. 显示 ROI 原图和平坦度图；
+ *   4. 仅在 Idle / Stopped 状态下允许操作。
+ */
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -76,12 +85,12 @@ private slots:
     ///        AVI 模式 → QFileDialog 选 .avi 文件；图片序列模式 → 选文件夹
     void onBrowseClicked();
 
-    /// @brief 开始检测按钮：从 UI 控件收集参数 → buildSourceConfig()
-    ///        → setupWorkers() 创建线程和工作对象 → inject 配置 → 启动线程
+    /// @brief 开始检测按钮: 读取参数 → 清理旧资源 → 创建 Worker 和线程
+    ///        → 加载模型 → 建立连接 → 注入配置 → 启动线程
     void onStartClicked();
 
-    /// @brief 停止检测按钮：向 FrameProducer 和 WaferAlgorithm 发送 stop()
-    ///        → 等待线程结束 → cleanupWorkers() 回收资源 → 恢复 UI 状态
+    /// @brief 停止检测按钮： 同步停止 FrameProducer，直接请求 WaferAlgorithm 停止
+    ///        → quit() → wait() → cleanupWorkers()
     void onStopClicked();
 
     /// @brief 观察 ROI 开关：用户勾选/取消勾选时切换 m_observeRoiEnabled
@@ -184,7 +193,7 @@ private:
                           const QString& csvPath = QString(),
                           const QString& dbPath = QString());
 
-    /// @brief 安全停止线程并释放资源（quit → wait → deleteLater）
+    /// @brief 安全停止线程并释放资源（请求停止 → quit → wait → delete）
     ///        先停 FrameProducer 再停 WaferAlgorithm，确保不再有新帧入队
     void cleanupWorkers();
 
@@ -208,8 +217,9 @@ private:
     /// @brief 更新状态栏文本：路径、分辨率、帧号、运行状态，根据检测模式显示不同指标
     void updateStatusBarText();
     
-    /// @brief 刷新参数显示标签：lblAlgoRoi / lblFiThresh / lblHotRatioThresh / lblObserveRoiInfo
-    ///        在 onAlgorithmResultReady() 和 slider 变化时调用
+    /// @brief 按当前检测模式刷新参数显示标签。
+    ///        传统模式显示 ROI 和 FI/P95/HotRatio 阈值；DL 模式显示分数、阈值和推理耗时
+    ///        在模式切换、收到算法结果或观察 ROI 变化时调用
     void updateParamLabels();
 
     /// @brief 根据模式切换三视图标题 + 参数面板显示/隐藏

@@ -2,39 +2,44 @@
 
 #include <QObject>
 #include <QString>
+#include <atomic>
 #include "Common.h"
 #include "DeepWaferDetector.h"
 
 class FrameProducer;
 
-/**  @brief 算法层：平坦度检测主链，对每一帧执行
-          传统模式：灰度→warpPolar→DFT→带通掩膜→IDFT→FI/p95/HotRatio→classify
-          DL 模式：调用 DeepWaferDetector 做 ONNX 推理
-          模式由 MainWindow 通过 setDetectionMode() 注入
-
-## WaferAlgorithm 工作流程
-
-1. setAlgoConfig() — 设好传统算法阈值参数
-
-2. setFrameProducer() — 注入采集层指针，用于拉帧
-
-3. setDetectionMode() — 选择 Traditional / DeepLearning
-
-4. loadDLModel() — DL 模式下加载 ONNX 模型（可选）
-
-5. frameAvailable() 信号触发 → processPendingFrames() 槽被调用
-     │
-     ├─ 循环调用 m_producer->tryDequeueFrame() 拉帧
-     │
-     ├─ DeepLearning 模式 → m_deepdetector.processFrame()（ONNX 推理）
-     │
-     ├─ Traditional 模式 → processSingleFrame()（传统算法主链）
-     │
-6. resultReady() — 发出 AlgoResult（含 original/spectrum/flatness 三图）
-      │
- 7. stop() → m_running=false → processPendingFrames() 循环退出
-      │
- 8. stop() 中发射 finished()
+/**
+ * @brief 算法层：对每一帧执行平坦度检测。
+ *
+ * 传统模式：
+ *   灰度 → warpPolar → DFT → 带通掩膜 → IDFT
+ *   → FI / P95 / HotRatio → 等级判断
+ *
+ * 深度学习模式：
+ *   调用 DeepWaferDetector 执行 ONNX 推理。
+ *
+ * 线程说明：
+ *   1. WaferAlgorithm 由主线程创建；
+ *   2. 启动前加载配置和模型；
+ *   3. 随后移动到算法线程；
+ *   4. start() 和 processPendingFrames() 在算法线程执行；
+ *   5. requestStop() 只修改原子停止标志，可由主线程直接调用；
+ *   6. requestStop() 不会中断当前正在执行的 Run()。
+ *
+ * 工作流程：
+ *   1. MainWindow 设置算法配置、采集器指针和检测模式；
+ *   2. 深度学习模式下加载 ONNX 模型；
+ *   3. FrameProducer 产生新帧并发出 frameAvailable()；
+ *   4. processPendingFrames() 被唤醒并循环取帧；
+ *   5. 根据检测模式选择传统算法或深度学习算法；
+ *   6. 每处理完成一帧，发出 resultReady()；
+ *   7. 队列为空时返回，等待下一次 frameAvailable()；
+ *   8. m_running.load() 为 false 时停止处理；
+ *   9. 当前帧完成后，算法线程自然退出；
+ *  10. 主线程 wait() 确认线程退出后，再释放算法对象。
+ *
+ * stop() 槽除了设置停止标志外，还会发出 finished()；
+ * requestStop() 只设置停止标志，不发出 finished()。
  */
 class WaferAlgorithm : public QObject
 {
@@ -60,21 +65,33 @@ public:
     /// @brief 模型是否已加载
     bool isDLModelLoaded() const;
 
+    /// @brief 立即请求停止，可从任意线程调用。
+    ///        只修改原子标志，不等待事件队列，也不会中断当前正在执行的 Run()。
+    void requestStop() noexcept
+    {
+        m_running.store(false);
+    }
+
 public slots:
     /// @brief 启动算法处理（重置运行标志，允许 processPendingFrames 再次被唤醒）
     void start();
 
-    /**  @brief 消费者：处理队列中所有待处理帧（由 frameAvailable() 信号触发）
-    内部流程：
-        1. 循环调用 m_producer->tryDequeueFrame() 拉帧
-        2. 每取到一帧 → processSingleFrame()
-        3. emit resultReady(result)
-        4. 队列清空后直接返回，等待下一次 frameAvailable() 唤醒
-        5. m_running==false 时立即退出循环*/
+    /**
+     * @brief 消费者：处理队列中的待处理帧。
+     *
+     * 处理流程：
+     *   1. 使用 tryDequeueFrame() 非阻塞取出一帧；
+     *   2. 深度学习模式调用 m_deepdetector.processFrame()；
+     *   3. 传统模式调用 processSingleFrame()；
+     *   4. 发出 resultReady()，将结果交给主窗口；
+     *   5. 队列为空时返回；
+     *   6. 每次处理下一帧前检查 m_running.load()；
+     *   7. 停止请求到达后，当前帧完成，循环自然退出。
+     */
     void processPendingFrames();
 
-    /// @brief 停止算法处理循环
-    ///        设置 m_running = false，当前帧处理完毕后自然退出
+    /// @brief 停止算法处理循环（Qt 槽）
+    ///        原子设置 m_running=false，当前帧处理完毕后自然退出
     void stop();
 
 signals:
@@ -143,7 +160,7 @@ private:
     // ========================================================================
     AlgoConfig      m_config;              // 算法参数配置（阈值/ROI比例/带通比例）
     FrameProducer*  m_producer = nullptr;  // 采集层指针（用于拉帧，不持有所有权）
-    bool            m_running = true;      // 运行标志（构造初始为 true，stop() 置 false）
+    std::atomic_bool  m_running{false};      // 运行标志（构造初始为 false),原子变量保证一次读或写操作不会被打断，并且其他线程能及时看到最新值
     DetectionMode   m_detectionMode = DetectionMode::Traditional; // 检测模式（Traditional / DeepLearning）
     DeepWaferDetector m_deepdetector;        // 深度学习检测器
 };

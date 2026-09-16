@@ -209,31 +209,35 @@ void MainWindow::initResultLogger(StorageMode mode,
 void MainWindow::cleanupWorkers()
 {
     // 先停采集再停算法，确保不再有新帧入队
-    if (m_producer)
+    if (m_producer &&
+        m_producerThread &&
+        m_producerThread->isRunning())
     {
-        //通过 Qt 的元对象系统（QMetaObject）调用 m_producer 的 stop() 方法，使用排队执行确保跨线程调用安全
-        QMetaObject::invokeMethod(m_producer, &FrameProducer::stop, Qt::QueuedConnection);
+        // 同步停止采集线程，确保不再产生新帧。
+        QMetaObject::invokeMethod(m_producer,
+                                  &FrameProducer::stop,
+                                  Qt::BlockingQueuedConnection);
     }
     if (m_algorithm)
     {
-        QMetaObject::invokeMethod(m_algorithm, &WaferAlgorithm::stop, Qt::QueuedConnection);
+        // 直接修改原子停止标志，不等待算法线程事件队列。
+        m_algorithm->requestStop();
     }
 
-    // 等待线程退出（quit() 会处理完已排队的 invokeMethod 调用再退出）
-    // QTimer  stop() 立即中断，wait(500) 绰绰有余
+    // 无超时等待：必须等线程真正退出后才能 delete worker。
     if (m_producerThread && m_producerThread->isRunning())//如果线程存在且正在运行
     {
         m_producerThread->quit();
-        m_producerThread->wait(500);
+        m_producerThread->wait();
     }
     if (m_algorithmThread && m_algorithmThread->isRunning())
     {
         m_algorithmThread->quit();
-        m_algorithmThread->wait(500);
+        m_algorithmThread->wait();
     }
 /*
 为什么 QThread 用 `deleteLater` 而 Worker 用 `delete`：
-退出2个子线程后，m_producer和 m_algorithm 已经不再运行了，但它们的线程对象 m_producerThread 和 m_algorithmThread 仍然存在（归属主线程）
+退出2个子线程后，m_producer和 m_algorithm 已经不再运行了，但它们的线程对象 m_producerThread 和 m_algorithmThread 仍然存在（归属主线程 MainWindow ）
 主线程的事件循环还在运行。deleteLater()把删除指令放入主线程的队列，等事件循环空闲时再执行删除，确保线程对象在安全的时机被销毁。
 */
     delete m_producer;
@@ -733,12 +737,41 @@ void MainWindow::updateStatusBarText()
 void MainWindow::updateParamLabels()
 {
     // —— DL 模式：显示 DL 参数 ——
-    if (m_lastResult.mode == DetectionMode::DeepLearning)
+    if (m_detectionMode == DetectionMode::DeepLearning)
     {
+        // 尚未收到 DL 结果时显示占位符，避免把默认值误认为推理结果。
+        const bool hasDlResult =
+            m_lastResult.mode == DetectionMode::DeepLearning &&
+            !m_lastResult.frameOriginal.empty();
         ui->lblDLScore->setText(
-            QString("AnomalyScore: %1").arg(m_lastResult.anomalyScore, 0, 'f', 3));
+            hasDlResult
+                ? QStringLiteral("AnomalyScore: %1")
+                      .arg(m_lastResult.anomalyScore, 0, 'f', 3)
+                : QStringLiteral("AnomalyScore: -"));
+        ui->lblDLGoodTh->setText(
+            QStringLiteral("Good阈值: %1")
+                .arg(m_dlconfig.goodThreshold, 0, 'f', 3));
+        ui->lblDLNgTh->setText(
+            QStringLiteral("NG阈值: %1")
+                .arg(m_dlconfig.ngThreshold, 0, 'f', 3));
         ui->lblDLInferMs->setText(
-            QString("推理耗时: %1 ms").arg(m_lastResult.inferenceTimeMs));
+            hasDlResult
+                ? QStringLiteral("推理耗时: %1 ms")
+                      .arg(m_lastResult.inferenceTimeMs)
+                : QStringLiteral("推理耗时: - ms"));
+        if (m_observeRoiEnabled && !m_observeRoiRect.isNull())
+        {
+            ui->lblDLObserveRoi->setText(
+                QStringLiteral("观察ROI: (%1,%2) %3x%4")
+                    .arg(m_observeRoiRect.x())
+                    .arg(m_observeRoiRect.y())
+                    .arg(m_observeRoiRect.width())
+                    .arg(m_observeRoiRect.height()));
+        }
+        else
+        {
+            ui->lblDLObserveRoi->setText(QStringLiteral("观察ROI: -"));
+        }
         return;
     }
 

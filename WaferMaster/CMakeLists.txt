@@ -105,6 +105,37 @@ add_custom_command(TARGET WaferMaster POST_BUILD
 if(MSVC)
     target_compile_options(WaferMaster PRIVATE /W4 /utf-8)
     add_definitions(-D_USE_MATH_DEFINES)
+
+    # ONNX Runtime 使用 Release 版 MSVC 运行库。
+    # 即使当前是 Debug 构建，也要复制 Release CRT，避免 0xc0000142。
+    # 从当前编译器路径找到 CRT，并在构建后复制到 exe 目录。
+    get_filename_component(_msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(_msvc_host_dir "${_msvc_bin_dir}" DIRECTORY)
+    get_filename_component(_msvc_bin_root "${_msvc_host_dir}" DIRECTORY)
+    get_filename_component(_msvc_version_dir "${_msvc_bin_root}" DIRECTORY)
+    get_filename_component(_msvc_tools_dir "${_msvc_version_dir}" DIRECTORY)
+    get_filename_component(_vc_tools_root "${_msvc_tools_dir}" DIRECTORY)
+    get_filename_component(_vc_root "${_vc_tools_root}" DIRECTORY)
+    file(GLOB _msvc_crt_candidates LIST_DIRECTORIES true
+         "${_vc_root}/Redist/MSVC/*/x64/Microsoft.VC143.CRT")
+    if(_msvc_crt_candidates)
+        list(SORT _msvc_crt_candidates)
+        list(REVERSE _msvc_crt_candidates)
+        list(GET _msvc_crt_candidates 0 _msvc_crt_dir)
+        foreach(_crt_name IN ITEMS
+                msvcp140.dll msvcp140_1.dll
+                vcruntime140.dll vcruntime140_1.dll
+                concrt140.dll)
+            if(EXISTS "${_msvc_crt_dir}/${_crt_name}")
+                add_custom_command(TARGET WaferMaster POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${_msvc_crt_dir}/${_crt_name}"
+                        "$<TARGET_FILE_DIR:WaferMaster>/${_crt_name}")
+            endif()
+        endforeach()
+    else()
+        message(WARNING "未找到 MSVC Release CRT，请安装匹配的 VC++ 运行库")
+    endif()
 endif()
 
 # 运行时部署 ONNX Runtime DLL + 模型文件
