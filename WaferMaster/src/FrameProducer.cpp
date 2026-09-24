@@ -146,7 +146,8 @@ void FrameProducer::tick()
         m_cap.read(frame);//读帧自动存入frame
         if (frame.empty())
         {
-            // 视频播放完毕，自然结束
+            // 视频读完，停止采集；保留队列，让算法处理剩余帧。
+            m_running = false;
             m_timer->stop();
             m_cap.release();
             emit finished();
@@ -161,7 +162,8 @@ void FrameProducer::tick()
         // ---- 图片序列：读一张 ----
         if (m_nextImageIndex >= m_imageFiles.size())
         {
-            // 全部读完，自然结束
+            // 图片读完，停止采集；保留队列，让算法处理剩余帧。
+            m_running = false;
             m_timer->stop();
             emit finished();
             return;
@@ -185,7 +187,7 @@ void FrameProducer::tick()
 }
 
 // ============================================================================
-// 槽函数：stop() — 立即停止 QTimer，释放资源
+// 槽函数：stop() — 在采集线程中停止 QTimer，释放资源
 // ============================================================================
 
 void FrameProducer::stop()
@@ -196,7 +198,7 @@ void FrameProducer::stop()
     if (m_timer)
     {
         m_timer->stop();
-        // 不 delete，start() 会重建；stop() 后 delete Worker 时自动析构
+        // QTimer 是 Worker 的子对象，随 Worker 在采集线程中销毁。
     }
 
     // 释放视频采集器

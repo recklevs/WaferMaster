@@ -171,13 +171,9 @@ void MainWindow::buildDeepLearning()
     m_dlconfig.modelPath = QCoreApplication::applicationDirPath()
                     + QStringLiteral("/models/model_curved_fringe.onnx");
 
-    m_algorithm->loadDLModel(m_dlconfig);
-    m_algorithm->setDetectionMode(m_detectionMode);// 把 UI 的选择，通过函数调用，复制给算法对象内部
-
-    if (m_algorithm->isDLModelLoaded())
-        Logger::get()->info("PatchCore model loaded, DL mode available");
-    else
-        Logger::get()->warn("PatchCore model unavailable, DL mode disabled");
+    // 主线程只传配置，实际加载由算法线程的 start() 完成。
+    m_algorithm->setDLConfig(m_dlconfig);
+    m_algorithm->setDetectionMode(m_detectionMode);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -208,54 +204,49 @@ void MainWindow::initResultLogger(StorageMode mode,
 
 void MainWindow::cleanupWorkers()
 {
-    // 先停采集再停算法，确保不再有新帧入队
+    // 本函数只在主线程调用。清理期间不再接收 Worker 的业务通知。
+    // 线程 finished → Worker deleteLater 的连接仍然保留。
+    if (m_producer)
+        disconnect(m_producer, nullptr, this, nullptr);
+
+    if (m_algorithm)
+        disconnect(m_algorithm, nullptr, this, nullptr);
+
+    // 先请求算法停止取帧，不用等待算法线程的事件队列。
+    if (m_algorithm)
+        m_algorithm->requestStop();
+
     if (m_producer &&
         m_producerThread &&
         m_producerThread->isRunning())
     {
-        // 同步停止采集线程，确保不再产生新帧。
+        // 在采集线程中停止定时器并清空队列，暂时保留生产者对象。
         QMetaObject::invokeMethod(m_producer,
                                   &FrameProducer::stop,
                                   Qt::BlockingQueuedConnection);
     }
-    if (m_algorithm)
-    {
-        // 直接修改原子停止标志，不等待算法线程事件队列。
-        m_algorithm->requestStop();
-    }
 
-    // 无超时等待：必须等线程真正退出后才能 delete worker。
-    if (m_producerThread && m_producerThread->isRunning())//如果线程存在且正在运行
-    {
-        m_producerThread->quit();
-        m_producerThread->wait();
-    }
-    if (m_algorithmThread && m_algorithmThread->isRunning())
+    // 算法还持有生产者指针，必须先结束算法线程，再销毁生产者。
+    // wait() 会阻塞主线程，需等待当前模型加载、读取或推理返回。
+    if (m_algorithmThread)
     {
         m_algorithmThread->quit();
         m_algorithmThread->wait();
     }
-/*
-为什么 QThread 用 `deleteLater` 而 Worker 用 `delete`：
-退出2个子线程后，m_producer和 m_algorithm 已经不再运行了，但它们的线程对象 m_producerThread 和 m_algorithmThread 仍然存在（归属主线程 MainWindow ）
-主线程的事件循环还在运行。deleteLater()把删除指令放入主线程的队列，等事件循环空闲时再执行删除，确保线程对象在安全的时机被销毁。
-*/
-    delete m_producer;
-    m_producer = nullptr;
-    delete m_algorithm;
-    m_algorithm = nullptr;
+    m_algorithm = nullptr; // Worker 已通过线程 finished → deleteLater 回收
 
-    // 线程通过 deleteLater 延迟回收，让 Qt 在事件循环中安全销毁 QThread 对象
     if (m_producerThread)
     {
-        m_producerThread->deleteLater();
-        m_producerThread = nullptr;
+        m_producerThread->quit();
+        m_producerThread->wait();
     }
-    if (m_algorithmThread)
-    {
-        m_algorithmThread->deleteLater();
-        m_algorithmThread = nullptr;
-    }
+    m_producer = nullptr;
+
+    // QThread 对象属于主线程，对应线程已经退出，可以直接删除。
+    delete m_algorithmThread;
+    m_algorithmThread = nullptr;
+    delete m_producerThread;
+    m_producerThread = nullptr;
 }
 
 // ============================================================================
@@ -293,14 +284,17 @@ onStartClicked()
   ├─ new QThread × 2            建新线程
   ├─ new Worker × 2             建工作对象
   ├─ moveToThread × 2           搬家
-  ├─ connect × 9                建跨线程信号链
+  ├─ connect                    建跨线程信号链和 Worker 自动回收连接
   ├─ setSourceConfig()          注入配置
   ├─ setFrameProducer()         算法绑定生产者
-  ├─ thread->start() × 2        启动线程
-  └─ updateRunState(Running)    状态机切运行
+  ├─ updateRunState(Running)    状态切为运行中
+  └─ thread->start() × 2        启动线程，算法线程内加载模型
 */
 void MainWindow::onStartClicked()
 {
+    if (m_runState == RunState::Running)
+        return;
+
     // 从 UI 收参
     m_sourceConfig = buildSourceConfig();
 
@@ -328,11 +322,18 @@ void MainWindow::onStartClicked()
     m_algorithm = new WaferAlgorithm();
     m_producer = new FrameProducer();
  
-    buildDeepLearning(); // m_algorithm 创建后初始化深度学习检测
+    buildDeepLearning(); // 保存模型配置和检测模式，不在主线程加载模型
 
     // 迁移到各自线程
     m_producer->moveToThread(m_producerThread);
     m_algorithm->moveToThread(m_algorithmThread);
+
+    // 线程真正结束后，在各自线程中销毁 Worker。
+    // Worker 的 finished 只通知业务结束，quit() 统一交给 cleanupWorkers()。
+    connect(m_producerThread, &QThread::finished,
+            m_producer, &QObject::deleteLater);
+    connect(m_algorithmThread, &QThread::finished,
+            m_algorithm, &QObject::deleteLater);
 
     // ====================================================================
     // 重建全部跨线程连接（每次全量重建，简洁无残留）
@@ -370,11 +371,11 @@ void MainWindow::onStartClicked()
     m_algorithm->setAlgoConfig(m_currentAlgoCfg);//算法处理器注入算法参数配置
     m_algorithm->setFrameProducer(m_producer);//算法处理器注入生产者指针，供拉帧使用
 
-    // 启动线程
-    m_producerThread->start();
-    m_algorithmThread->start();
-
     updateRunState(RunState::Running);
+
+    // 先启动算法线程；加载模型期间，采集帧通过原有队列等待处理。
+    m_algorithmThread->start();
+    m_producerThread->start();
 }
 
 void MainWindow::onStopClicked()
@@ -461,6 +462,10 @@ void MainWindow::onContrastChanged(int value)
 
 void MainWindow::onSourceInfoReady(const QString& path, const QSize& resolution)
 {
+    // 忽略停止后或上一轮留下的源信息。
+    if (!m_producer || sender() != m_producer || m_runState != RunState::Running)
+        return;
+
     m_currentPath       = path;
     m_currentResolution = resolution;
     updateStatusBarText();
@@ -468,6 +473,10 @@ void MainWindow::onSourceInfoReady(const QString& path, const QSize& resolution)
 
 void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
 {
+    // 停止后或上一轮遗留的结果，不再刷新界面和写入记录。
+    if (!m_algorithm || sender() != m_algorithm || m_runState != RunState::Running)
+        return;
+
     m_lastResult = result;  // 缓存最后一帧，供 slider 刷新和观察 ROI 使用
 
     refreshMainViews(result);
@@ -490,17 +499,43 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
 
 void MainWindow::onWorkerError(const QString& message)
 {
+    QObject* source = sender();
+    // 只处理本轮 Worker 的首个错误，避免重复弹窗和重复清理。
+    if (!source ||
+        (source != m_producer && source != m_algorithm) ||
+        m_runState != RunState::Running)
+    {
+        return;
+    }
+
+    updateRunState(RunState::Error);
+    cleanupWorkers();
+
+    // 先清理再弹窗，避免模态对话框显示期间后台仍在运行。
     QMessageBox::critical(this, QStringLiteral("错误"), message);
 }
 
 void MainWindow::onProducerFinished()
 {
-    // 空函数。finished 信号已连接到 thread->quit()，线程退出由 cleanupWorkers 统一管理
+    if (!m_producer || sender() != m_producer || m_runState != RunState::Running)
+        return;
+
+    // 采集读完不立即清空队列，让算法处理剩余帧后再通知结束。
+    if (m_algorithm)
+    {
+        QMetaObject::invokeMethod(m_algorithm,
+                                  &WaferAlgorithm::finishInput,
+                                  Qt::QueuedConnection);
+    }
 }
 
 void MainWindow::onAlgorithmFinished()
 {
-    // 算法线程结束，不做额外操作
+    if (!m_algorithm || sender() != m_algorithm || m_runState != RunState::Running)
+        return;
+
+    cleanupWorkers();
+    updateRunState(RunState::Stopped);
 }
 
 void MainWindow::onLogMessage(const QString& message)
@@ -515,8 +550,10 @@ void MainWindow::onLogMessage(const QString& message)
 
 void MainWindow::onCommStartRequested()
 {
-    // 仅在 Idle 或 Stopped 状态执行，避免重复启动
-    if (m_runState == RunState::Idle || m_runState == RunState::Stopped)
+    // Error 状态也已完成清理，修正输入后允许重新启动。
+    if (m_runState == RunState::Idle ||
+        m_runState == RunState::Stopped ||
+        m_runState == RunState::Error)
     {
         onStartClicked();
     }

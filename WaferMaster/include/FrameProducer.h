@@ -10,7 +10,7 @@
 #include "Common.h"
 
 /**  @brief 采集层：从 AVI 视频文件或图片序列文件夹中逐帧读取，
-            QTimer 驱动，stop() 可立即中断。
+            QTimer 驱动，stop() 在采集线程执行,可中断。
 
 ## FrameProducer 工作流程 (QTimer 版)
 
@@ -27,8 +27,13 @@
      │                                       │
 4. tryDequeueFrame — 算法线程收到信号后调用，从m_frameQueue队头取走一帧
 
-5. stop() → m_running=false → m_timer->stop() 立即停止调度
+5. 自然读完 → m_running=false → 停止定时器 → emit finished()
+   保留队列中的帧，由主窗口通知算法处理完后再清理。
+
+6. 主动停止：stop() → m_running=false → m_timer->stop()
          → cap.release() → 清空队列 → emit finished()
+
+Worker 随采集线程结束通过 deleteLater() 销毁；算法线程必须先结束。
 */
 class FrameProducer : public QObject
 {
@@ -59,12 +64,12 @@ public slots:
     void start();
 
     /// @brief 停止采集循环（跨线程信号槽触发）
-    ///        QTimer 驱动版：m_timer->stop() 立即生效，不再等待当前帧读完
+    ///        等当前读取返回后执行，停止定时器并清空队列
     void stop();
 
 private slots:
     /// @brief QTimer内部调用 每次触发时读一帧（AVI: cap.read, 图片: imread）
-    ///        读到空/读完 → m_timer->stop() → cap.release() → emit finished()
+    ///        自然读完时停止采集并保留队列，发出 finished() 通知算法收尾
     void tick();
 
 signals:
@@ -72,7 +77,7 @@ signals:
     /// @note 仅在队列 0→1 的瞬间发射一次，避免高帧率下重复空唤醒
     void frameAvailable();
 
-    /// @brief 采集循环正常退出时发射
+    /// @brief 自然读完或 stop() 执行后发出，不代表 QThread 已经退出
     void finished();
 
     /// @brief 采集过程中发生错误时发射
@@ -103,9 +108,9 @@ private:
     SourceConfig         m_config;           // 输入源配置（类型/路径/帧间隔/队列容量）
     QQueue<FramePacket>  m_frameQueue;       // 帧数据队列（单队列三合一，线程安全）
     QMutex               m_queueMutex;       // 保护 m_frameQueue 的互斥锁
-    bool                 m_running = false;  // 运行标志（start() 置 true，stop() 置 false）
+    bool                 m_running = false;  // 仅采集线程使用；自然读完或 stop() 时置 false
     QStringList          m_imageFiles;       // 图片序列模式下的文件路径列表（已排序）
     int                  m_nextImageIndex = 0; // 图片序列模式下的下一张待读取索引
-    QTimer*              m_timer = nullptr;  // 帧间隔定时器（停后立即清零，不可再用）
+    QTimer*              m_timer = nullptr;  // 帧间隔定时器，随 Worker 在采集线程中销毁
     cv::VideoCapture     m_cap;              // AVI 视频采集器（stop() 时 release()）
 };

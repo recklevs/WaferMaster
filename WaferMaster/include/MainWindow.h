@@ -33,18 +33,21 @@ class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
  *      - 读取界面参数；
  *      - 清理旧线程和 Worker；
  *      - 创建新的 FrameProducer 和 WaferAlgorithm；
- *      - 加载深度学习模型；
+ *      - 保存模型配置和检测模式；
  *      - 将 Worker 移动到对应线程；
  *      - 建立跨线程信号连接；
- *      - 注入配置并启动线程；
+ *      - 注入配置并启动线程，模型在算法线程内加载；
  *   5. FrameProducer 产生帧；
  *   6. WaferAlgorithm 处理帧并发出结果；
  *   7. MainWindow 刷新图像、状态和日志；
- *   8. 用户点击“停止检测”；
- *      - 同步停止采集；
+ *   8. 自然读完：通知算法处理剩余帧，再清理并切换到 Stopped；
+ *   9. 用户点击停止或关闭窗口：
  *      - 原子请求算法停止；
- *      - quit() + wait() 等待线程退出；
- *      - 释放 Worker 和线程对象。
+ *      - 同步停止采集并清空队列；
+ *      - 先结束算法线程，再结束采集线程；
+ *      - Worker 在线程结束时通过 deleteLater() 回收；
+ *      - 主线程 wait() 返回后删除 QThread 对象。
+ *  10. Worker 报错：切换到 Error，完成清理后再弹窗。
  *
  * 观察 ROI：
  *   1. 用户在原图上框选区域；
@@ -86,11 +89,10 @@ private slots:
     void onBrowseClicked();
 
     /// @brief 开始检测按钮: 读取参数 → 清理旧资源 → 创建 Worker 和线程
-    ///        → 加载模型 → 建立连接 → 注入配置 → 启动线程
+    ///        → 建立连接 → 注入配置 → 启动线程（在算法线程加载模型）
     void onStartClicked();
 
-    /// @brief 停止检测按钮： 同步停止 FrameProducer，直接请求 WaferAlgorithm 停止
-    ///        → quit() → wait() → cleanupWorkers()
+    /// @brief 停止检测按钮：cleanupWorkers() 完成清理后，切换到 Stopped
     void onStopClicked();
 
     /// @brief 观察 ROI 开关：用户勾选/取消勾选时切换 m_observeRoiEnabled
@@ -120,7 +122,7 @@ private slots:
     // 跨线程信号接收槽
     // ========================================================================
 
-    /// @brief 接收采集层发出的源信息（路径 + 分辨率），更新状态栏显示
+    /// @brief 接收本轮采集层的源信息（路径 + 分辨率），忽略停止后的通知
     /// @param path       输入源路径（AVI 文件 或 图片文件夹）
     /// @param resolution 视频/首帧图像分辨率（宽×高）
     void onSourceInfoReady(const QString& path, const QSize& resolution);
@@ -129,14 +131,14 @@ private slots:
     /// @param result 包含 fi/p95/hotRatio/level 和三张显示用 cv::Mat
     void onAlgorithmResultReady(const AlgoResult& result);
 
-    /// @brief 接收采集层或算法层发出的错误消息，通过 QMessageBox 显示
+    /// @brief 接收本轮 Worker 的错误，切换到 Error，清理完成后再弹窗
     /// @param message 可读的错误描述文本
     void onWorkerError(const QString& message);
 
-    /// @brief 采集线程 finished 信号 → 更新运行状态，检查是否两个线程都已完成
+    /// @brief 采集自然结束后，通知算法处理剩余帧
     void onProducerFinished();
 
-    /// @brief 算法线程 finished 信号 → 更新运行状态，检查是否两个线程都已完成
+    /// @brief 算法业务结束后，清理线程并更新为 Stopped
     void onAlgorithmFinished();
 
     /// @brief 接收 QtLogBridge 信号 → 追加到 plainTextEditLog
@@ -167,18 +169,10 @@ private:
     /// @brief 设置 UI 控件初始状态：按钮启用/禁用、状态栏默认文本、观察 ROI 初始关闭
     void setupUiState();
 
-    /// @brief 创建工作线程和工作对象（无父对象构造 → moveToThread）
-    ///        1. new FrameProducer / WaferAlgorithm（无 parent）
-    ///        2. new QThread
-    ///        3. moveToThread()
-    ///        4. connect 线程 start/finished 信号
+    /// @brief 初始化两个 QThread 对象；Worker 在 onStartClicked() 中创建
     void setupWorkers();
 
-    /// @brief 建立跨线程信号槽连接：采集→算法→主窗口
-    ///        包括 frameAvailable → processPendingFrames
-    ///           resultReady → onAlgorithmResultReady
-    ///           errorOccurred → onWorkerError
-    ///           finished → onProducerFinished / onAlgorithmFinished
+    /// @brief 连接 UI 控件；Worker 的跨线程连接在每次 onStartClicked() 中建立
     void setupConnections();
 
     /// @brief 初始化 TCP 通信层：创建 CommunicationManager、连接信号槽、启动服务
@@ -193,8 +187,9 @@ private:
                           const QString& csvPath = QString(),
                           const QString& dbPath = QString());
 
-    /// @brief 安全停止线程并释放资源（请求停止 → quit → wait → delete）
-    ///        先停 FrameProducer 再停 WaferAlgorithm，确保不再有新帧入队
+    /// @brief 仅主线程调用：请求算法停止 → 同步停止采集 → 先结束算法线程再结束采集线程
+    ///        Worker 由线程 finished → deleteLater 回收；wait 后删除 QThread 对象
+    ///        阻塞等待当前操作返回，不能保证固定的停止耗时
     void cleanupWorkers();
 
     // ========================================================================
@@ -206,7 +201,7 @@ private:
     /// @return 填充完整的 SourceConfig
     SourceConfig buildSourceConfig() const;
 
-    /// @brief 配置深度学习检测：加载 ONNX 模型 + 注入检测模式
+    /// @brief 保存模型配置和检测模式；实际加载由算法线程 start() 完成
     void buildDeepLearning();
 
     /// @brief 更新运行状态，并同步调整 UI 控件启用/禁用
@@ -278,8 +273,8 @@ private:
     // ========================================================================
     QThread*        m_producerThread   = nullptr; // 采集线程
     QThread*        m_algorithmThread  = nullptr; // 算法线程
-    FrameProducer*  m_producer         = nullptr; // 采集层工作对象（无父对象）
-    WaferAlgorithm* m_algorithm        = nullptr; // 算法层工作对象（无父对象）
+    FrameProducer*  m_producer         = nullptr; // 无父对象，采集线程结束时自动回收
+    WaferAlgorithm* m_algorithm        = nullptr; // 无父对象，算法线程结束时自动回收
 
     // ========================================================================
     // 成员变量 — 系统状态
