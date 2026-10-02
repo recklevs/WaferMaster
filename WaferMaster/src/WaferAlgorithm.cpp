@@ -7,6 +7,7 @@
 #include <vector>
 #include <cmath>
 #include <chrono>
+#include <stdexcept>
 
 // ============================================================================
 // 构造 / 析构
@@ -48,7 +49,7 @@ bool WaferAlgorithm::loadDLModel(const DLconfig& config)
     // 由 start() 在算法线程中调用，Env 和 Session 都在这里创建。
     m_deepdetector = std::make_unique<DeepWaferDetector>();
     m_deepdetector->setDLconfig(config);
-    return m_deepdetector->loadModel(config.modelPath.toStdString());
+    return m_deepdetector->loadModel(config.modelPath);
 }
 bool WaferAlgorithm::isDLModelLoaded() const
 {
@@ -81,8 +82,9 @@ void WaferAlgorithm::start()
     catch (const std::exception& e)
     {
         requestStop();
+        Logger::get()->error("DL detector initialization failed: {}", e.what());
         emit errorOccurred(
-            QStringLiteral("初始化深度学习检测器失败：%1")
+            QStringLiteral("初始化深度学习检测器失败。\n技术详情：%1")
                 .arg(QString::fromUtf8(e.what())));
     }
 }
@@ -103,7 +105,7 @@ void WaferAlgorithm::processPendingFrames()
 {
     if (!m_producer)
     {
-        emit errorOccurred(QStringLiteral("FrameProducer not set"));
+        emit errorOccurred(QStringLiteral("算法处理器未连接采集器。"));
         return;
     }
 
@@ -118,9 +120,23 @@ void WaferAlgorithm::processPendingFrames()
 
     // 按检测模式选择算法路径
     AlgoResult result;
-    if (m_detectionMode == DetectionMode::DeepLearning && isDLModelLoaded())
+    if (m_detectionMode == DetectionMode::DeepLearning)
     {
-        result = m_deepdetector->processFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+        try
+        {
+            if (!isDLModelLoaded())
+                throw std::runtime_error("DL model not loaded");
+            result = m_deepdetector->processFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+        }
+        catch (const std::exception& e)
+        {
+            requestStop();
+            Logger::get()->error("DL inference failed frame #{}: {}", packet.frameIdx, e.what());
+            emit errorOccurred(QStringLiteral("深度学习推理失败（帧 %1）。\n技术详情：%2")
+                                   .arg(packet.frameIdx)
+                                   .arg(QString::fromUtf8(e.what())));
+            return;
+        }
     }
     else
     {
@@ -128,7 +144,7 @@ void WaferAlgorithm::processPendingFrames()
         auto t1 = std::chrono::steady_clock::now();
         auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     //按不同模式记录日志
-    if (m_detectionMode == DetectionMode::DeepLearning && isDLModelLoaded())
+    if (m_detectionMode == DetectionMode::DeepLearning)
     {
          Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
                 packet.frameIdx, result.anomalyScore,

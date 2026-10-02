@@ -70,7 +70,7 @@ void FrameProducer::start()
         if (!m_cap.isOpened())
         {
             Logger::get()->error("Cannot open video file: {}", m_config.sourcePath.toStdString());
-            emit errorOccurred(QStringLiteral("Cannot open video file: %1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("无法打开视频文件：%1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
@@ -86,7 +86,7 @@ void FrameProducer::start()
         QDir dir(m_config.sourcePath);//QDir是 Qt 的目录操作类
         if (!dir.exists())
         {
-            emit errorOccurred(QStringLiteral("图片序列目录不存在: %1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("图片序列目录不存在：%1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }
@@ -104,7 +104,7 @@ void FrameProducer::start()
 
         if (m_imageFiles.isEmpty())
         {
-            emit errorOccurred(QStringLiteral("No image files in: %1").arg(m_config.sourcePath));
+            emit errorOccurred(QStringLiteral("目录中没有支持格式的图片：%1").arg(m_config.sourcePath));
             m_running = false;
             return;
         }

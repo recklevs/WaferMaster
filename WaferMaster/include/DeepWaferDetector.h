@@ -14,12 +14,15 @@ public:
 
     ///@brief 注入深度学习配置（阈值、输入尺寸）
   void setDLconfig(const DLconfig& config) { m_config = config; };
-    /// @brief 初始化 ONNX Runtime 环境和会话
-  bool loadModel(const std::string& modelPath);
+    /// @brief 加载模型并检查接口；QString 路径可正确转换为 Windows 宽字符串
+    /// @return 成功返回 true；ONNX Runtime 加载错误返回 false
+    /// @note 配置或接口不兼容时抛出 std::runtime_error，由 WaferAlgorithm::start() 捕获
+  bool loadModel(const QString& modelPath);
     /// @brief 检查模型是否已加载
   bool isLoaded() const { return m_session != nullptr; }
 
-    /// @brief 对一帧图像执行推理，返回完整的 AlgoResult
+    /// @brief 对一帧图像执行推理，成功时返回完整的 AlgoResult
+    /// @note 失败时抛出异常，由 WaferAlgorithm::processPendingFrames() 报错并停止检测
     /// @param frame      输入帧（BGR 彩色图或灰度图均可）
     /// @param frameIdx   帧序号（用于日志）
     /// @param timestampMs 时间戳
@@ -27,7 +30,7 @@ public:
 
 private:
     /// @brief 把 OpenCV 图像转成 ONNX 需要的格式(预处理)
-    ///        灰度 → 3通道复制 → resize 256×256 → float[0,1] → NCHW
+    ///        BGR 原样或灰度复制为 3 通道 → resize 到 inputSize → float[0,1] → NCHW
     cv::Mat preprocess(const cv::Mat& gray) const;
 
     /// @brief 异常分数 → Good/Warning/NG（后处理）
@@ -41,8 +44,8 @@ private:
     // Ort::MemoryInfo：描述内存分配策略（CPU 内存、连续分配）
     Ort::MemoryInfo m_memoryInfo{Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)};
 
-    // Ort::Session：代表一个已加载的模型。用 unique_ptr 是因为 Ort::Session 不
-    // 支持默认构造，必须在 loadModel() 中真正加载模型后才创建
+    // Ort::Session：代表一个已加载的模型。unique_ptr 在加载前可以为空，
+    // 加载成功后持有会话，并在 reset() 或检测器销毁时自动释放会话。
     std::unique_ptr<Ort::Session> m_session;
    
     DLconfig m_config; 
