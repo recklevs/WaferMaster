@@ -39,7 +39,7 @@ class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
  *      - 注入配置并启动线程，模型在算法线程内加载；
  *   5. FrameProducer 产生帧；
  *   6. WaferAlgorithm 处理帧并发出结果；
- *   7. MainWindow 刷新图像、状态和日志；
+ *   7. MainWindow 刷新图像、状态和日志，并向独立存储线程提交保存任务；
  *   8. 自然读完：通知算法处理剩余帧，再清理并切换到 Stopped；
  *   9. 用户点击停止或关闭窗口：
  *      - 原子请求算法停止；
@@ -48,6 +48,7 @@ class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
  *      - Worker 在线程结束时通过 deleteLater() 回收；
  *      - 主线程 wait() 返回后删除 QThread 对象。
  *  10. Worker 报错：切换到 Error，完成清理后再弹窗。
+ *  11. 关闭窗口时先停止检测，再等待已接受的保存任务收尾，最后结束存储线程。
  *
  * 观察 ROI：
  *   1. 用户在原图上框选区域；
@@ -161,6 +162,9 @@ private slots:
     /// @brief 查询历史记录：弹出等级选择框 → SQLite查询 → 结果表格对话框
     void onQueryHistoryClicked();
 
+    /// @brief 存储失败时停止本轮检测并提示，防止继续产生未保存的结果
+    void onStorageError(const QString& message);
+
 private:
     // ========================================================================
     // 初始化和清理
@@ -186,6 +190,9 @@ private:
     void initResultLogger(StorageMode mode,
                           const QString& csvPath = QString(),
                           const QString& dbPath = QString());
+
+    /// @brief close 排在已接受任务之后执行，收尾完成后再 quit/wait 和回收线程
+    void cleanupResultLogger();
 
     /// @brief 仅主线程调用：请求算法停止 → 同步停止采集 → 先结束算法线程再结束采集线程
     ///        Worker 由线程 finished → deleteLater 回收；wait 后删除 QThread 对象
@@ -315,7 +322,11 @@ private:
     // ========================================================================
     // 成员变量 — 结果记录
     // ========================================================================
-    ResultLogger* m_resultLogger = nullptr;  // 检测结果存储器
+    ResultLogger* m_resultLogger = nullptr;  // 存储 Worker，在存储线程销毁
+    QThread* m_storageThread = nullptr;      // 整个窗口生命周期共用一条存储线程
+    StorageMode m_storageMode = StorageMode::None;
+    bool m_storageReady = false;
+    bool m_storageFailed = false;            // 出错后禁止继续检测，修复后重新启动程序
 
     // ========================================================================
     // 成员变量 — 检测模式

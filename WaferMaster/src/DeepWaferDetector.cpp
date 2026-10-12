@@ -280,6 +280,7 @@ AlgoResult DeepWaferDetector::processFrame(const cv::Mat& frame,qint64 frameIdx,
   // 8. 填充原图、彩色热力图、灰度原图与热力图叠加图。
     result.frameOriginal = frame.clone();           // 左上：原图
     result.frameSpectrum = heatColor.clone();       // 右上：热力图 
+    result.frameHeatmap = result.frameSpectrum;     // 存储同一张展示图；入保存队列时再深拷贝
     cv::Mat originalColor;
     cv::cvtColor(gray, originalColor, cv::COLOR_GRAY2BGR);
     cv::addWeighted(originalColor,0.6,   // 第一张：原图，权重 60%

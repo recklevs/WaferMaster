@@ -3,6 +3,7 @@
 #include <QString>
 #include <QMetaType>
 #include <QRect>
+#include <QSize>
 #include <QColor>
 #include <opencv2/opencv.hpp>
 
@@ -106,7 +107,13 @@ struct AlgoResult
     DetectionMode mode          = DetectionMode::Traditional;
     double        anomalyScore  = 0.0;
     qint64        inferenceTimeMs = 0;
-    cv::Mat       frameHeatmap;       // DL 热力图
+    cv::Mat       frameHeatmap;       // DL 彩色展示热力图；不代表原始浮点异常值
+
+    // 存储/历史查询信息：源帧时间与保存时间分开，避免混淆视频播放位置和日期时间。
+    qint64 recordedAtMs = 0;
+    QString heatmapPath;              // 保存的 PNG 文件路径
+    QSize heatmapSize;
+    bool hasModeInfo = true;          // 旧记录没有检测模式，查询时设为 false
 };
 
 ///@brief 深度学习模型配置
@@ -132,6 +139,13 @@ inline QString detectionLevelToString(DetectionLevel level)
     case DetectionLevel::Ng:      return QStringLiteral("NG");
     default:                      return QStringLiteral("Unknown");
     }
+}
+
+/// 检测模式文本，用于结果存储和历史查询。
+inline QString detectionModeToString(DetectionMode mode)
+{
+    return mode == DetectionMode::DeepLearning
+        ? QStringLiteral("DeepLearning") : QStringLiteral("Traditional");
 }
 
 /// 根据检测等级返回对应颜色，供状态栏和 ROI 矩形框显示使用

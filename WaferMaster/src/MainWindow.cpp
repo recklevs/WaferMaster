@@ -46,7 +46,7 @@ MainWindow::~MainWindow()
         m_comm->stopServer();
     }
     delete m_roiDialog;//防御性删除，确保即使未创建也安全
-    delete m_resultLogger;
+    cleanupResultLogger(); // 等待已经接受的记录保存完成，不直接删除跨线程 Worker
     delete ui;
 }
 
@@ -183,23 +183,54 @@ void MainWindow::initResultLogger(StorageMode mode,
                                   const QString& csvPath,
                                   const QString& dbPath)
 {
-    delete m_resultLogger; // 先销毁旧实例（重复调用时安全）
-    m_resultLogger = new ResultLogger(this);//创建新的 ResultLogger 实例，parent=this 由主窗口管理生命周期
+    cleanupResultLogger();
+    m_storageMode = mode;
+    m_storageReady = false;
+    m_storageFailed = false;
+    m_storageThread = new QThread(this);
+    m_storageThread->setObjectName(QStringLiteral("ResultStorage"));
+    m_resultLogger = new ResultLogger(); // 无父对象，才能 moveToThread
+    m_resultLogger->moveToThread(m_storageThread);
 
     // 若未指定路径，默认写入 exe 所在目录的 logs/ 子目录
     const QString logDir = QCoreApplication::applicationDirPath() + QStringLiteral("/logs");
-    QDir().mkpath(logDir); // 确保目录存在
+    // 创建目录和打开文件也交给存储线程，不在主线程执行磁盘操作。
     //  三目运算：如果调用者没传路径（空字符串），就用默认路径
     const QString finalCsv = csvPath.isEmpty()
-        ? logDir + QStringLiteral("/records.csv") : csvPath;
+        ? logDir + QStringLiteral("/records_v2.csv") : csvPath; // 新格式另存，旧 records.csv 不动
     const QString finalDb = dbPath.isEmpty()
         ? logDir + QStringLiteral("/records.db")  : dbPath;
 
-    m_resultLogger->setMode(mode, finalCsv, finalDb);
-
-    // ResultLogger 日志 → 主窗口日志面板
+    // 先连接通知，再启动线程；数据库在存储线程中创建、使用和移除。
     connect(m_resultLogger, &ResultLogger::logMessage,
             this, &MainWindow::onLogMessage);
+    connect(m_resultLogger, &ResultLogger::errorOccurred,
+            this, &MainWindow::onStorageError, Qt::QueuedConnection);
+    connect(m_storageThread, &QThread::finished, m_resultLogger, &QObject::deleteLater);
+    m_storageThread->start();
+    // 只在初始化时等待；文件和数据库仍在存储线程打开，之后每帧保存不等待。
+    QMetaObject::invokeMethod(m_resultLogger, [this, mode, finalCsv, finalDb] {
+        m_storageReady = m_resultLogger->setMode(mode, finalCsv, finalDb);
+    }, Qt::BlockingQueuedConnection);
+    ui->btnStart->setEnabled(m_storageReady);
+}
+
+void MainWindow::cleanupResultLogger()
+{
+    if (m_resultLogger && m_storageThread && m_storageThread->isRunning())
+    {
+        // 主线程已不再提交记录；本次调用排在保存/查询任务之后，避免 quit 丢掉积压任务。
+        // Worker 不反向阻塞调用主线程，因此这里不会互相等待。
+        QMetaObject::invokeMethod(m_resultLogger, [logger = m_resultLogger] {
+            logger->close();
+        }, Qt::BlockingQueuedConnection);
+        m_storageThread->quit();
+        m_storageThread->wait();
+    }
+    m_resultLogger = nullptr; // 线程 finished → deleteLater 已回收 Worker
+    delete m_storageThread;
+    m_storageThread = nullptr;
+    m_storageReady = false;
 }
 
 void MainWindow::cleanupWorkers()
@@ -292,6 +323,14 @@ onStartClicked()
 */
 void MainWindow::onStartClicked()
 {
+    if (!m_storageReady || m_storageFailed)
+    {
+        QMessageBox::warning(this, QStringLiteral("结果存储"),
+            m_storageFailed
+                ? QStringLiteral("结果存储发生过错误。请修复磁盘空间、路径或权限后重新启动程序。")
+                : QStringLiteral("结果存储未就绪。请检查路径和权限后重新启动程序。"));
+        return;
+    }
     if (m_runState == RunState::Running)
         return;
 
@@ -491,10 +530,9 @@ void MainWindow::onAlgorithmResultReady(const AlgoResult& result)
     if (m_comm)
         m_comm->updateLatestStatus(m_runState, result);
 
-    // 通用结果存储（CSV + SQLite，按当前模式写入）
+    // 只提交保存任务；CSV、SQLite 和 PNG 写入由存储线程执行。
     if (m_resultLogger)
-        // 持久化存储：CSV + SQLite 按模式写入
-        m_resultLogger->append(result);
+        m_resultLogger->enqueue(result);
 }//Algorithm每处理完一帧后，都会调用这个槽函数来更新界面显示和状态栏信息。
 
 void MainWindow::onWorkerError(const QString& message)
@@ -574,13 +612,12 @@ void MainWindow::onCommStopRequested()
 
 void MainWindow::onQueryHistoryClicked()
 {
-    if (!m_resultLogger ||
-        (m_resultLogger->mode() != StorageMode::Sqlite &&
-         m_resultLogger->mode() != StorageMode::Both))//检查Logger 是否存在 & 当前存储模式是否包含 SQLite
+    if (!m_resultLogger || !m_storageReady ||
+        (m_storageMode != StorageMode::Sqlite && m_storageMode != StorageMode::Both))
     {
         QMessageBox::warning(this,
             QStringLiteral("提示"),
-            QStringLiteral("当前模式不支持历史查询"));
+            QStringLiteral("存储尚未就绪，或当前模式不支持历史查询。"));
         return;
     }
 
@@ -598,7 +635,18 @@ void MainWindow::onQueryHistoryClicked()
     if      (chosen == QStringLiteral("Warning")) level = DetectionLevel::Warning;
     else if (chosen == QStringLiteral("NG"))      level = DetectionLevel::Ng;
 
-    QList<AlgoResult> results = m_resultLogger->queryByLevel(level);
+    QList<AlgoResult> results;
+    QString error;
+    // 手动查询才等待：SQL 仍在存储线程执行，不能从主线程直接使用它的数据库。
+    // 查询会排在已提交的保存任务之后；数据较多或磁盘较慢时，界面会短暂等待。
+    QMetaObject::invokeMethod(m_resultLogger, [this, level, &results, &error] {
+        results = m_resultLogger->queryByLevel(level, error);
+    }, Qt::BlockingQueuedConnection);
+    if (!error.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("历史查询失败"), error);
+        return;
+    }
     if (results.isEmpty())
     {
         QMessageBox::information(this,
@@ -609,15 +657,16 @@ void MainWindow::onQueryHistoryClicked()
     //创建表格对话框
     QDialog* dlg = new QDialog(this);
     dlg->setAttribute(Qt::WA_DeleteOnClose);//用户关闭时自动删除，避免内存泄漏
-    dlg->setWindowTitle(QStringLiteral("历史查询 — %1（共%2条）")
+    dlg->setWindowTitle(QStringLiteral("历史查询 — %1（最近%2条，最多1000条）")
                         .arg(chosen).arg(results.size()));
-    dlg->resize(700, 450);
-    // 创建表格控件，行数=查询结果条数，列数=5，dlg为父
-    QTableWidget* table = new QTableWidget(results.size(), 5, dlg);
+    dlg->resize(1100, 450);
+    // 新旧记录一起显示；旧记录无法恢复的模式/分数显示为未知或 --。
+    QTableWidget* table = new QTableWidget(results.size(), 10, dlg);
     table->setHorizontalHeaderLabels({
-        QStringLiteral("时间"), QStringLiteral("FI"),
-        QStringLiteral("P95"), QStringLiteral("HotRatio(%)"),
-        QStringLiteral("Level")});//设置表头标签
+        QStringLiteral("保存时间"), QStringLiteral("帧号"), QStringLiteral("模式"),
+        QStringLiteral("FI"), QStringLiteral("P95"), QStringLiteral("HotRatio(%)"),
+        QStringLiteral("Score"), QStringLiteral("耗时(ms)"), QStringLiteral("Level"),
+        QStringLiteral("热力图路径")});//设置表头标签
     table->horizontalHeader()->setStretchLastSection(true);//最后一列自动拉伸填满剩余宽度
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);//禁止编辑
     table->setSelectionBehavior(QAbstractItemView::SelectRows);//整行选中
@@ -625,24 +674,43 @@ void MainWindow::onQueryHistoryClicked()
     for (int i = 0; i < results.size(); ++i)//遍历查询结果，填充表格
     {
         const AlgoResult& r = results[i];
-        QDateTime dt = QDateTime::fromMSecsSinceEpoch(r.timestampMs);//把毫秒时间戳转为日期时间对象
-        //创建N条×5列表格的单元格对象
+        QDateTime dt = QDateTime::fromMSecsSinceEpoch(r.recordedAtMs);
+        const bool dl = r.hasModeInfo && r.mode == DetectionMode::DeepLearning;
         table->setItem(i, 0,
             new QTableWidgetItem(dt.toString(QStringLiteral("MM-dd hh:mm:ss"))));
         table->setItem(i, 1,
-            new QTableWidgetItem(QString::number(r.fi, 'f', 2)));
+            new QTableWidgetItem(QString::number(r.frameIdx)));
         table->setItem(i, 2,
-            new QTableWidgetItem(QString::number(r.p95, 'f', 1)));
+            new QTableWidgetItem(r.hasModeInfo ? detectionModeToString(r.mode) : QStringLiteral("未知（旧记录）")));
         table->setItem(i, 3,
-            new QTableWidgetItem(QString::number(r.hotRatio, 'f', 2)));
+            new QTableWidgetItem(dl ? QStringLiteral("--") : QString::number(r.fi, 'f', 2)));
         table->setItem(i, 4,
+            new QTableWidgetItem(dl ? QStringLiteral("--") : QString::number(r.p95, 'f', 1)));
+        table->setItem(i, 5,
+            new QTableWidgetItem(dl ? QStringLiteral("--") : QString::number(r.hotRatio, 'f', 2)));
+        table->setItem(i, 6,
+            new QTableWidgetItem(dl ? QString::number(r.anomalyScore, 'f', 3) : QStringLiteral("--")));
+        table->setItem(i, 7,
+            new QTableWidgetItem(dl ? QString::number(r.inferenceTimeMs) : QStringLiteral("--")));
+        table->setItem(i, 8,
             new QTableWidgetItem(detectionLevelToString(r.level)));
+        table->setItem(i, 9, new QTableWidgetItem(r.heatmapPath));
     }
     //创建布局管理器对象
     QVBoxLayout* lay = new QVBoxLayout(dlg);
     lay->addWidget(table);//把表格控件添加到布局中
     dlg->exec();
 }/*这些对象的生命周期从函数调用到dlg关闭，不存在"声明后、赋值前被使用"的窗口期，不需初始化*/
+
+void MainWindow::onStorageError(const QString& message)
+{
+    if (sender() != m_resultLogger || m_storageFailed) return;
+    m_storageFailed = true;
+    updateRunState(RunState::Error);
+    cleanupWorkers(); // 只停止检测，不清掉已经接受的存储任务
+    ui->btnStart->setEnabled(false);
+    QMessageBox::critical(this, QStringLiteral("结果存储错误"), message);
+}
 
 // ============================================================================
 // 配置与状态
