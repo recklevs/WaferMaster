@@ -1,6 +1,5 @@
 #include "CommunicationManager.h"
 #include <QHostAddress>
-#include <QRegularExpression>
 
 // ═══════════════════════════════════════════════════════════════════
 // 构造 / 析构
@@ -54,7 +53,9 @@ bool CommunicationManager::startServer(const QHostAddress& address, quint16 port
 
 void CommunicationManager::stopServer()
 {
-    for (auto* client : m_clients)// 范围 for 遍历列表
+    // 断开信号可能立即从 m_clients 移除对象，遍历副本才能避免名单在途中变化。
+    const QList<QTcpSocket*> clients = m_clients;
+    for (auto* client : clients)
     {
         client->disconnectFromHost();//等缓冲区数据发完再断
     }
@@ -77,7 +78,7 @@ void CommunicationManager::onNewConnection()
     while (m_server->hasPendingConnections())//循环处理所有挂起的连接请求
     {
         QTcpSocket* client = m_server->nextPendingConnection();//当客户端成功连接服务器后，操作系统会把连接请求放入一个挂起连接队列里。
-        //nextPendingConnection() 的作用就是从这个队列的头部取出一个连接，并在内部new一个 QTcpSocket 对象。
+        // 取出 Qt 已经为这个连接创建的 QTcpSocket，不需要自己再 new。
         m_clients.append(client);
 
         connect(client, &QTcpSocket::readyRead,
@@ -120,19 +121,10 @@ void CommunicationManager::onReadyRead()
     if (!client)
         return;
 
-    // 全量读取所有可用数据，返回 QByteArray（字节数组）。
-    const QByteArray data = client->readAll();
-    //把整段数据按换行符拆分后的多行数据集合。
-    const QList<QByteArray> lines = data.split('\n');
-
-    for (const QByteArray& rawLine : lines)
+    // 收到换行才处理；未完整的数据留在这个 socket 中，下次 readyRead 再接着读。
+    while (client->canReadLine())
     {
-        // 去掉尾部 \r 和首尾空白
-        QByteArray line = rawLine.trimmed();
-        // 去掉可能残留的 \r
-        if (line.endsWith('\r'))
-            line.chop(1);
-        line = line.trimmed();
+        const QByteArray line = client->readLine().trimmed(); // 同时去掉 \r、\n 和首尾空白
 
         if (line.isEmpty())
             continue;
@@ -187,8 +179,20 @@ QString CommunicationManager::buildStatusText() const
 {
     QString stateStr = runStateToString(m_lastState);
 
+    // DL 不计算传统指标，单独返回缓存结果的模式、异常分数和毫秒耗时。
+    if (m_lastResult.mode == DetectionMode::DeepLearning)
+    {
+        return QStringLiteral(
+                   "STATUS state=%1 frame=%2 level=%3 mode=DeepLearning score=%4 inference_ms=%5")
+            .arg(stateStr)
+            .arg(m_lastResult.frameIdx)
+            .arg(detectionLevelToString(m_lastResult.level))
+            .arg(m_lastResult.anomalyScore, 0, 'f', 3)
+            .arg(m_lastResult.inferenceTimeMs);
+    }
+    // 保留传统字段及其顺序，只在末尾增加模式，方便原客户端继续读取。
     return QStringLiteral(
-               "STATUS state=%1 frame=%2 fi=%3 p95=%4 hotRatio=%5 level=%6")
+               "STATUS state=%1 frame=%2 fi=%3 p95=%4 hotRatio=%5 level=%6 mode=Traditional")
         .arg(stateStr)
         .arg(m_lastResult.frameIdx)
         .arg(m_lastResult.fi, 0, 'f', 2)
