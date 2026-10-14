@@ -118,52 +118,57 @@ void WaferAlgorithm::processPendingFrames()
         // 计时：精确测量这一帧的纯算法耗时 
         auto t0 = std::chrono::steady_clock::now();
 
-    // 按检测模式选择算法路径
-    AlgoResult result;
-    if (m_detectionMode == DetectionMode::DeepLearning)
-    {
+        AlgoResult result;
+        // 两种模式统一处理异常：失败就停止，不能把默认 Good 当作检测结果发出。
         try
         {
-            if (!isDLModelLoaded())
-                throw std::runtime_error("DL model not loaded");
-            result = m_deepdetector->processFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+            if (m_detectionMode == DetectionMode::DeepLearning)
+            {
+                if (!isDLModelLoaded())
+                    throw std::runtime_error("DL model not loaded");
+                result = m_deepdetector->processFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+            }
+            else
+            {
+                result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);
+            }
         }
         catch (const std::exception& e)
         {
             requestStop();
-            Logger::get()->error("DL inference failed frame #{}: {}", packet.frameIdx, e.what());
-            emit errorOccurred(QStringLiteral("深度学习推理失败（帧 %1）。\n技术详情：%2")
+            Logger::get()->error("{} processing failed frame #{}: {}",
+                detectionModeToString(m_detectionMode).toStdString(), packet.frameIdx, e.what());
+            const QString operation = m_detectionMode == DetectionMode::DeepLearning
+                ? QStringLiteral("深度学习推理") : QStringLiteral("传统图像分析");
+            emit errorOccurred(QStringLiteral("%1失败（帧 %2）。\n技术详情：%3")
+                                   .arg(operation)
                                    .arg(packet.frameIdx)
                                    .arg(QString::fromUtf8(e.what())));
             return;
         }
-    }
-    else
-    {
-         result = processSingleFrame(packet.frame, packet.frameIdx, packet.timestampMs);}
         auto t1 = std::chrono::steady_clock::now();
         auto elapsedUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-    //按不同模式记录日志
-    if (m_detectionMode == DetectionMode::DeepLearning)
-    {
-         Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
+        // 按不同模式记录日志
+        if (m_detectionMode == DetectionMode::DeepLearning)
+        {
+            Logger::get()->debug("DL Frame #{}: score={:.3f}, level={}, {}ms",
                 packet.frameIdx, result.anomalyScore,
                 detectionLevelToString(result.level).toStdString(),
                 result.inferenceTimeMs);
-    }
-    else
-{       // 日志调用 1：debug 级别 — 每帧性能快照
-        Logger::get()->debug("Frame #{} processed in {} us, FI={:.2f}, HotRatio={:.2f}%, Level={}",
-            packet.frameIdx, elapsedUs, result.fi, result.hotRatio,
-            detectionLevelToString(result.level).toStdString());
-        // 日志调用 2：warn 级别 — NG 帧告警
-        if (result.level == DetectionLevel::Ng)
-            Logger::get()->warn("NG Frame #{}: FI={:.2f}, P95={:.2f}, HotRatio={:.2f}%",
-                packet.frameIdx, result.fi, result.p95, result.hotRatio);
-}
+        }
+        else
+        {
+            // 日志调用 1：debug 级别 — 每帧性能快照
+            Logger::get()->debug("Frame #{} processed in {} us, FI={:.2f}, HotRatio={:.2f}%, Level={}",
+                packet.frameIdx, elapsedUs, result.fi, result.hotRatio,
+                detectionLevelToString(result.level).toStdString());
+            // 日志调用 2：warn 级别 — NG 帧告警
+            if (result.level == DetectionLevel::Ng)
+                Logger::get()->warn("NG Frame #{}: FI={:.2f}, P95={:.2f}, HotRatio={:.2f}%",
+                    packet.frameIdx, result.fi, result.p95, result.hotRatio);
+        }
         emit resultReady(result);
-    
-}
+    }
 }
 
 void WaferAlgorithm::stop()
@@ -179,12 +184,14 @@ void WaferAlgorithm::stop()
 
 AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frameIdx, qint64 timestampMs) const
 {
+    if (frame.empty() || frame.depth() != CV_8U ||
+        (frame.channels() != 1 && frame.channels() != 3))
+        throw std::runtime_error("Traditional input must be a non-empty 8-bit grayscale or BGR image");
+
     AlgoResult result;
     result.frameIdx    = frameIdx;
     result.timestampMs = timestampMs;
 
-    try
-    {
     // 保存原图副本（UI 显示用，clone 确保独立所有权）
     result.frameOriginal = frame.clone();
 
@@ -208,8 +215,9 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
                   maxRadius, cv::INTER_LINEAR + cv::WARP_POLAR_LINEAR);
 
     // --- 步骤3：DFT 傅里叶变换 ---
-    int m = cv::getOptimalDFTSize(polarImg.rows);
-    int n = cv::getOptimalDFTSize(polarImg.cols);
+    // 象限交换要求宽高为偶数；向上补齐，避免奇数尺寸漏掉最后一行/列。
+    int m = cv::getOptimalDFTSize((polarImg.rows + 1) / 2) * 2;
+    int n = cv::getOptimalDFTSize((polarImg.cols + 1) / 2) * 2;
     cv::Mat padded;
     cv::copyMakeBorder(polarImg, padded, 0, m - polarImg.rows, 0,
                        n - polarImg.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
@@ -252,22 +260,22 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
     cv::Mat filtered;
     cv::idft(complexI, filtered, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
 
-    // --- 步骤7：算法 ROI 统计 ---
+    // --- 步骤7：在极坐标滤波图的中心 ROI 统计，不是原图的中心 ROI ---
     QRect roiQ = makeCentralRoi(QSize(filtered.cols, filtered.rows));
     cv::Rect roiRect(roiQ.x(), roiQ.y(), roiQ.width(), roiQ.height());
     result.algoRoiRect = roiQ;
 
     cv::Mat filteredRoi = filtered(roiRect);
 
-    // FI 平坦度：ROI 内标准差
+    // FI：滤波后 ROI 的灰度标准差，是经验纹理指标，不是物理平坦度。
     cv::Scalar meanValue, stdValue;
     cv::meanStdDev(filteredRoi, meanValue, stdValue);
     result.fi = stdValue[0];
 
-    // P95：第 95 百分位像素强度
+    // P95：滤波后 ROI 内所有像素值的第 95 百分位。
     result.p95 = percentile95(filteredRoi);
 
-    // HotRatio：热点像素占比
+    // HotRatio：ROI 内滤波值超过 p95Threshold 的比例，不是实际缺陷面积。
     cv::Mat hotMask = filteredRoi > m_config.p95Threshold;
     result.hotRatio = 100.0 * static_cast<double>(cv::countNonZero(hotMask)) /
                       static_cast<double>(roiRect.width * roiRect.height);
@@ -275,7 +283,7 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
     // --- 步骤8：classify 判定 ---
     result.level = classify(result.fi, result.p95, result.hotRatio);
 
-    // --- 步骤9：生成平坦图（可视化结果） ---
+    // --- 步骤9：逐帧归一化生成滤波结果图，仅供观察，不是表面高度图 ---
     cv::Mat flatness;
     cv::normalize(filtered, flatness, 0, 255, cv::NORM_MINMAX);
     flatness.convertTo(flatness, CV_8U);
@@ -305,13 +313,6 @@ AlgoResult WaferAlgorithm::processSingleFrame(const cv::Mat& frame, qint64 frame
                 cv::FONT_HERSHEY_SIMPLEX, 0.7, levelColor, 2);
 
     result.frameFlatness = flatness;
-
-    }
-    catch (const std::exception& e)
-    {
-        Logger::get()->error("Frame #{} algorithm exception: {}", frameIdx, e.what());
-        // 返回部分填充的结果（frameOriginal 已 clone 在外层捕获前）
-    }
 
     return result;
 }

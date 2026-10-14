@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(WaferMaster VERSION 0.1.0 LANGUAGES CXX)
+project(WaferMaster VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,14 +83,12 @@ target_link_libraries(WaferMaster
     "${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib"
 )
 
-# 编译后自动拷贝 OpenCV DLL 到输出目录
-set(OPENCV_BIN_DIR "F:/opencv/opencv/build/x64/vc16/bin")
+# 跟随当前构建配置，只复制实际链接的那套 OpenCV DLL。
 add_custom_command(TARGET WaferMaster POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${OPENCV_BIN_DIR}/opencv_world4120d.dll"
-        "${OPENCV_BIN_DIR}/opencv_world4120.dll"
-        $<TARGET_FILE_DIR:WaferMaster>
-    COMMENT "Copying OpenCV DLLs to output directory"
+        "$<TARGET_FILE:opencv_world>"
+        "$<TARGET_FILE_DIR:WaferMaster>"
+    COMMENT "Copying matching OpenCV DLL to output directory"
 )
 
 # 编译后自动部署 Qt 运行时 DLL（windeployqt）

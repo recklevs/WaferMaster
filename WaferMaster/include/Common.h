@@ -27,12 +27,12 @@ enum class RunState
     Error    // 错误状态（如文件无法打开）
 };
 
-/// @brief 检测等级：Good / Warning / NG，由 classify() 根据阈值判定
+/// @brief 图像分析等级：Good / Warning / NG，按各模式阈值判定，不代表已标定的物理合格等级
 enum class DetectionLevel
 {
-    Good,    // 良品，指标均在阈值内
-    Warning, // 警告，部分指标接近阈值
-    Ng       // 不合格，指标超出阈值
+    Good,    // 当前规则下未触发异常
+    Warning, // 当前规则下需要关注
+    Ng       // 当前规则下判定异常
 };
 
 /// @brief 结果存储模式：无 / CSV / SQLite / 双写
@@ -75,13 +75,13 @@ struct FramePacket
 /// @brief 算法参数配置，WaferAlgorithm 初始化时传入
 struct AlgoConfig
 {
-    double fiThreshold        = 18.0;  // FI 平坦度判定阈值
-    double p95Threshold       = 30.0;  // P95 热区像素强度阈值（Hot区像素亮度上限）
-    double hotRatioThreshold  = 5.0;   // HotRatio 判定阈值（Hot区像素占比，%），超出则判定异常
-    double roiRatioW          = 0.70;  // 算法 ROI 宽度占原图的比例（0~1），中心裁切
-    double roiRatioH          = 0.70;  // 算法 ROI 高度占原图的比例（0~1），中心裁切
-    double bandPassInnerRatio = 0.02;  // 带通滤波器内径比例（相对频谱最大半径），低频截止
-    double bandPassOuterRatio = 0.15;  // 带通滤波器外径比例（相对频谱最大半径），高频截止
+    double fiThreshold        = 18.0;  // 滤波后 ROI 灰度标准差（FI）的经验阈值
+    double p95Threshold       = 30.0;  // P95 判定阈值，同时用作 HotRatio 的像素筛选阈值
+    double hotRatioThreshold  = 5.0;   // HotRatio 经验阈值（%）；最终等级由三项共同判定
+    double roiRatioW          = 0.70;  // ROI 宽度占极坐标滤波图的比例（0~1），中心裁切
+    double roiRatioH          = 0.70;  // ROI 高度占极坐标滤波图的比例（0~1），中心裁切
+    double bandPassInnerRatio = 0.02;  // 内半径占频谱短边长度的比例，低频截止
+    double bandPassOuterRatio = 0.15;  // 外半径占频谱短边长度的比例，高频截止
 };
 
 // ============================================================================
@@ -94,20 +94,20 @@ struct AlgoResult
 {
     qint64 frameIdx    = -1;          // 帧序号，从0开始递增
     qint64 timestampMs = 0;           // 时间戳（ms），采集时记录
-    double fi          = 0.0;         // FI 平坦度指标
-    double p95         = 0.0;         // P95 指标（热区像素强度第95百分位值）
-    double hotRatio    = 0.0;         // HotRatio：热区像素占总像素的比例（0~100%）
+    double fi          = 0.0;         // FI：滤波后 ROI 的灰度标准差
+    double p95         = 0.0;         // 滤波后 ROI 内全部像素值的第 95 百分位
+    double hotRatio    = 0.0;         // ROI 内滤波值超过 p95Threshold 的比例（0~100%）
     DetectionLevel level = DetectionLevel::Good; // 检测等级，由 classify() 根据阈值判定
-    QRect algoRoiRect;                 // 算法 ROI 矩形区域
+    QRect algoRoiRect;                 // 传统模式为极坐标滤波图 ROI；DL 模式未使用
     cv::Mat frameOriginal;             // 原始输入帧（clone 后的独立副本）
     cv::Mat frameSpectrum;             // 频谱图（处理中间结果，用于显示）
-    cv::Mat frameFlatness;             // 平坦图（最终检测结果图，用于显示）
+    cv::Mat frameFlatness;             // 历史字段名保留：传统滤波图 / DL 叠加图，非高度图
 
     // —— DL 模式扩展字段（Traditional 模式下为默认值）——
     DetectionMode mode          = DetectionMode::Traditional;
-    double        anomalyScore  = 0.0;
+    double        anomalyScore  = 0.0; // 模型异常分数
     qint64        inferenceTimeMs = 0;
-    cv::Mat       frameHeatmap;       // DL 彩色展示热力图；不代表原始浮点异常值
+    cv::Mat       frameHeatmap;       // DL 彩色展示热力图
 
     // 存储/历史查询信息：源帧时间与保存时间分开，避免混淆视频播放位置和日期时间。
     qint64 recordedAtMs = 0;

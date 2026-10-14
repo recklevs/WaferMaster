@@ -53,7 +53,7 @@ class MainWindow;// 在 Ui 命名空间中前向声明 MainWindow 类
  * 观察 ROI：
  *   1. 用户在原图上框选区域；
  *   2. 将界面坐标转换为图像坐标；
- *   3. 显示 ROI 原图和平坦度图；
+ *   3. 显示观察 ROI 的原图和结果图（传统结果为极坐标图，同位置不代表同一物理区域）；
  *   4. 仅在 Idle / Stopped 状态下允许操作。
  */
 class MainWindow : public QMainWindow
@@ -231,12 +231,12 @@ private:
     // 显示刷新（2）
     // ========================================================================
 
-    /// @brief 刷新三张主图显示：原图、频谱图、平坦图
+    /// @brief 刷新三张主图显示：原图、频谱/热力图、检测结果图
     ///        调用 showMatOnLabel() 将 cv::Mat 转 QImage 后设置到对应 QLabel
     /// @param result 算法层输出的完整检测结果
     void refreshMainViews(const AlgoResult& result);
 
-    /// @brief 刷新焦点 ROI 小图：ROI 原图 + ROI 平坦图
+    /// @brief 刷新观察 ROI 小图：ROI 原图 + ROI 结果图
     ///        仅在观察 ROI 已启用（m_observeRoiEnabled）且框选有效时执行
     ///        从 m_lastResult.frameOriginal / frameFlatness 按 m_observeRoiRect 裁出
     void refreshObserveRoiViews();

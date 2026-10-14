@@ -2,7 +2,7 @@
   "version": 6,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 20,
+    "minor": 25,
     "patch": 0
   },
   "configurePresets": [
@@ -27,19 +27,28 @@
       "name": "vscode",
       "inherits": "qt-base",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build-vscode-wrapper-ninja"
+      "binaryDir": "${sourceDir}/build-vscode-wrapper-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "vscode-release",
+      "inherits": "vscode",
+      "binaryDir": "${sourceDir}/build-vscode-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
     {
       "name": "vscode-debug",
-      "configurePreset": "vscode",
-      "configuration": "Debug"
+      "configurePreset": "vscode"
     },
     {
       "name": "vscode-release",
-      "configurePreset": "vscode",
-      "configuration": "Release"
+      "configurePreset": "vscode-release"
     }
   ]
 }

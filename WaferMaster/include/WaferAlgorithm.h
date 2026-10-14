@@ -10,7 +10,7 @@
 class FrameProducer;
 
 /**
- * @brief 算法层：对每一帧执行平坦度检测。
+ * @brief 算法层：逐帧进行传统纹理分析或深度学习异常检测。
  *
  * 传统模式：
  *   灰度 → warpPolar → DFT → 带通掩膜 → IDFT
@@ -80,7 +80,7 @@ public slots:
      *   1. 使用 tryDequeueFrame() 非阻塞取出一帧；
      *   2. 深度学习模式调用 m_deepdetector->processFrame()；
      *   3. 传统模式调用 processSingleFrame()；
-     *   4. 发出 resultReady()，将结果交给主窗口；
+     *   4. 成功才发出 resultReady()；异常时请求停止并发出 errorOccurred()；
      *   5. 队列为空时返回；
      *   6. 每次处理下一帧前检查 m_running.load()；
      *   7. 停止请求到达后，当前帧完成，循环自然退出。
@@ -136,19 +136,19 @@ private:
     void shiftDFT(cv::Mat& fImage) const;
 
     /// @brief 生成以图像中心为基准的算法 ROI 矩形
-    /// @param size 原始图像尺寸（宽×高）
+    /// @param size 极坐标滤波图尺寸（宽×高，含 DFT 补边）
     /// @return 中心裁切后的 ROI 矩形（由 roiRatioW / roiRatioH 控制比例）
     QRect makeCentralRoi(const QSize& size) const;
 
     /// @brief 对算法 ROI 浮点图像统计第 95 百分位像素强度
     /// @param roi32f 输入 ROI 图像（CV_32F 单通道）
-    /// @return 第 95 百分位亮度值
+    /// @return 第 95 百分位滤波值（可能为负数）
     float percentile95(const cv::Mat& roi32f) const;
 
     /// @brief 根据三指标阈值综合判定检测等级
-    /// @param fi       FI 平坦度值
-    /// @param p95      P95 热区像素强度值
-    /// @param hotRatio HotRatio 热区像素占比（%）
+    /// @param fi       滤波后 ROI 灰度标准差
+    /// @param p95      滤波后 ROI 内全部像素值的第 95 百分位
+    /// @param hotRatio ROI 内超过像素阈值的占比（%）
     /// @return Good / Warning / NG
     DetectionLevel classify(double fi, double p95, double hotRatio) const;
 

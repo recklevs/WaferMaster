@@ -48,6 +48,13 @@ bool FrameProducer::tryDequeueFrame(FramePacket& packet)
 
 void FrameProducer::start()
 {
+    // 先检查配置：非正容量会导致空队列出队，非正间隔也不适合作为采集周期。
+    if (m_config.frameIntervalMs < 1 || m_config.maxQueueSize < 1)
+    {
+        emit errorOccurred(QStringLiteral("采集帧间隔和队列容量必须大于 0。"));
+        return;
+    }
+
     m_running = true;
 
     Logger::get()->info("Producer started, source: {}, path: {}",
