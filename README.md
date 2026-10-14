@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/OpenCV-4.12.0-red?logo=opencv" alt="OpenCV 4.12.0">
   <img src="https://img.shields.io/badge/ONNX_Runtime-CPU-purple" alt="ONNX Runtime">
   <img src="https://img.shields.io/badge/spdlog-1.14.1-cyan" alt="spdlog">
+  <img src="https://img.shields.io/badge/Network-TCP-blue" alt="TCP">
   <img src="https://img.shields.io/badge/Database-SQLite-orange?logo=sqlite" alt="SQLite">
   <img src="https://img.shields.io/badge/Build-CMake-064F8C?logo=cmake" alt="CMake">
 </p>
