@@ -1,196 +1,129 @@
-# WaferMaster — 晶圆平坦度智能检测系统
+# WaferMaster — 晶圆干涉图像分析与异常检测原型
 
-基于 **OpenCV + Qt 6** 的晶圆（Wafer）表面平坦度检测桌面应用，支持 AVI 视频 / 图片序列输入，实时傅里叶频谱分析，自动判定良品/警告/不合格，并提供 TCP 远程控制接口。
+基于 **C++17 / Qt 6 / OpenCV / ONNX Runtime** 的 Windows 桌面项目，支持传统频域纹理分析与 PatchCore 异常检测，以及结果存储、历史查询和 TCP 控制。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/C++-17-blue?logo=c%2B%2B" alt="C++17">
-  <img src="https://img.shields.io/badge/Qt-6.10.2-green?logo=qt" alt="Qt 6.10.2">
-  <img src="https://img.shields.io/badge/OpenCV-4.12.0-red?logo=opencv" alt="OpenCV 4.12.0">
-  <img src="https://img.shields.io/badge/spdlog-1.14.1-cyan" alt="spdlog">
-  <img src="https://img.shields.io/badge/Database-SQLite-orange?logo=sqlite" alt="SQLite">
-  <img src="https://img.shields.io/badge/Build-CMake-064F8C?logo=cmake" alt="CMake">
-</p>
+> 本项目用于学习与演示，**不是经过光学标定的物理平坦度测量系统**。Good / Warning / NG 是图像指标或模型分数的阈值判定，不代表物理计量验收结论。
 
----
+## 功能
 
-## 功能特性
+- **输入**：AVI 视频文件、按文件名排序的图片序列。
+- **双模式**：传统模式显示频谱、滤波结果及 FI/P95/HotRatio；PatchCore 模式显示异常分数、热力图及叠加图。
+- **观察与显示**：观察 ROI 局部放大、亮度/对比度显示调整、自适应缩放。
+- **结果记录**：CSV + SQLite 异步保存，DL 彩色热力图另存 PNG；按等级查询最近最多 1000 条记录。
+- **通信与日志**：本机 TCP 控制与状态查询；spdlog 输出到控制台、文件和界面。
 
-- **多输入源支持**：AVI 视频文件 或 图片序列文件夹，可配置帧间隔模拟帧率
-- **核心检测算法**：灰度化 → 极坐标变换 → DFT → 圆环带通滤波 → IDFT → 三指标判定
-  - **FI**（平坦度指标）：频谱能量分布均匀性
-  - **p95**：热区像素强度阈值
-  - **HotRatio**：热区像素占比
-- **三级判定**：🟢 Good（良品）/ 🟡 Warning（警告）/ 🔴 NG（不合格）
-- **三通道可视化**：原图 + 频谱图 + 平坦度图 实时同步显示
-- **观察 ROI**：在原图上鼠标框选任意区域，弹窗查看 ROI 原图和平坦图细节
-- **双写存储**：CSV（人可读）+ SQLite（结构化查询），支持按检测等级筛选历史记录
-- **TCP 远程控制**：内置 TCP Server，可通过 NetAssist 等工具发送 `START` / `STOP` / `STATUS` 指令
-- **自适应缩放**：窗口全屏/恢复时图像自动适配
-- **实时日志**：spdlog 日志系统，同时输出到文件和控制台面板
+采集、算法、存储分别在独立线程工作，主线程负责界面与 TCP 事件处理。
 
----
+## 截图
 
-## 截图概览
+<details>
+<summary>主界面</summary>
 
-<img width="1163" height="1042" alt="image" src="https://github.com/user-attachments/assets/0ae8d114-7e55-4d64-b7f1-51bbb625d6eb" />
+![WaferMaster 主界面](docs/images/overview.png)
 
-<img width="2527" height="1347" alt="image" src="https://github.com/user-attachments/assets/b06efaf3-e6a2-47eb-8cde-5eb6962468a5" />
+</details>
 
----
+传统模式与 TCP 控制：
 
-## 技术栈
+![传统频域分析与 TCP 客户端控制](docs/images/traditional-tcp.png)
 
-| 组件 | 版本 | 用途 |
-|------|------|------|
-| C++ | 17 | 核心语言标准 |
-| Qt 6 | 6.10.2 (msvc2022_64) | GUI 框架 + 网络 + SQL |
-| OpenCV | 4.12.0 | 图像处理与频域分析 |
-| spdlog | 1.14.1 | 高性能异步日志 |
-| SQLite | 3 (via Qt SQL) | 检测结果持久化 |
-| CMake | 3.20+ | 跨平台构建系统 |
-| MSVC | 2022 | Windows 编译器 |
+PatchCore 模式与历史查询：
 
----
+![PatchCore 异常热力图与历史记录](docs/images/patchcore-history.png)
 
-## 项目结构
+截图中的分数和 NG 标签仅展示程序运行，不作为准确率或真实缺陷标注。
 
-```
-WaferMaster/
-├── CMakeLists.txt              # CMake 构建配置
-├── CMakePresets.json           # CMake 预设（Debug/Release）
-├── .gitignore
-├── include/
-│   ├── Common.h                # 枚举、配置结构体、结果载体
-│   ├── MainWindow.h            # 主窗口（线程编排、UI 刷新）
-│   ├── WaferAlgorithm.h        # 核心算法（频域平坦度检测）
-│   ├── FrameProducer.h         # 采集层（AVI/图片序列→帧队列）
-│   ├── CommunicationManager.h  # TCP 通信管理（远程控制）
-│   ├── ResultLogger.h          # 持久化存储（CSV + SQLite）
-│   ├── RoiViewerDialog.h       # 观察 ROI 弹窗
-│   └── Logger.h                # spdlog 封装
-├── src/                        # 源文件实现
-│   ├── main.cpp
-│   ├── MainWindow.cpp
-│   ├── WaferAlgorithm.cpp
-│   ├── FrameProducer.cpp
-│   ├── CommunicationManager.cpp
-│   ├── ResultLogger.cpp
-│   └── RoiViewerDialog.cpp
-├── ui/
-│   └── WaferMaster.ui          # Qt Designer UI 布局
-├── resources/
-│   ├── app.rc                  # Windows 资源文件
-│   └── resources.qrc           # Qt 资源集合
-└── spdlog/                     # spdlog 源码（v1.14.1，静态链接）
+## 两种模式实际在做什么
+
+### 传统模式：频域纹理分析
+
+处理链：灰度化 → 极坐标展开 → DFT → 圆环带通 → IDFT → 极坐标滤波图中心 ROI 统计。
+
+| 指标 | 实际含义 |
+| --- | --- |
+| FI | 滤波后 ROI 内像素值的标准差 |
+| P95 | 滤波后 ROI 内全部像素值的第 95 百分位 |
+| HotRatio | ROI 内滤波值超过固定像素阈值的比例，不是实际缺陷面积 |
+
+默认阈值为 FI ≥ 18、P95 ≥ 30、HotRatio ≥ 5%。三项都超阈值判为 NG，一至两项为 Warning，均未超阈值为 Good。参数见 [Common.h](WaferMaster/include/Common.h)。
+
+这些指标会受到条纹对比度、成像条件和参数影响；滤波结果图还经过逐帧归一化。它们不是表面高度、PV/RMS 或具有物理单位的平坦度。
+
+### PatchCore 模式：学习正常纹理后的异常检测
+
+通过 ONNX Runtime 在 CPU 上推理，读取 `pred_score` 和 `anomaly_map`，显示异常分数、彩色热力图与叠加图。默认 Good / Warning、Warning / NG 分界为 0.76、0.90；异常分数不是缺陷概率。
+
+当前模型预处理为灰度复制到三通道或保留 BGR → resize 至 256×256 → 除以 255 → NCHW，不额外做 ImageNet mean/std 归一化。默认输入为 float32 `[1,3,256,256]`；更换或重新训练模型时，需要同步核对预处理、输入输出和阈值。
+
+当前模型主要基于模拟条纹训练，真实图像存在域差异，弱异常仍可能漏检。**两种模式尚未经过独立真实标注测试集的系统评估，也未验证融合或互补效果。**
+
+## 使用 v2.0 发布包
+
+1. 在 [v2.0 Releases](https://github.com/recklevs/WaferMaster/releases/tag/v2.0) 下载 ZIP，完整解压到可写目录。
+2. 保留 exe 同目录的 DLL、插件文件夹及 `models/model_curved_fringe.onnx`，双击 `WaferMaster.exe`。
+3. 选择图片文件夹或 AVI 文件、检测模式，再点击“开始检测”；可手动停止，输入自然读完后也会停止。
+4. 目标电脑如缺 C++ 运行库，安装随包的 `vc_redist.x64.exe`。
+
+不要只复制 exe，也不要将 Debug 和 Release 的 DLL 混装。
+
+## 从源码构建
+
+### 依赖与准备
+
+- Windows x64，MSVC 2022 / v143、Qt 6.10.2（msvc2022_64）、OpenCV 4.12.0、CMake ≥ 3.25、Ninja。
+- spdlog 1.14.1 源码已包含在仓库中；SQLite 通过 Qt SQL 使用。
+- **ONNX Runtime 二进制与模型未纳入 Git**，克隆源码后需自行准备：
+
+```text
+WaferMaster/onnxruntime/lib/onnxruntime.lib
+WaferMaster/onnxruntime/lib/onnxruntime.dll
+WaferMaster/models/model_curved_fringe.onnx
 ```
 
----
+ONNX Runtime 的头文件、导入库和 DLL 应来自配套 SDK；仓库当前头文件的 API 版本为 27，不要任意混用版本。模型接口和训练背景可参考 [模型交付简报](WaferMaster/models/DL_MODEL_BRIEF.txt)，其中历史接入建议以当前代码为准。
 
-## 架构设计
+构建配置使用作者本机安装路径。请先按实际环境调整 [CMakeLists.txt](WaferMaster/CMakeLists.txt)、[CMakePresets.json](WaferMaster/CMakePresets.json) 和 [MSVC/CMake 启动脚本](scripts/cmake-vs2022.cmd) 中的 Qt、OpenCV、MSVC、CMake 路径。
 
-```mermaid
-flowchart TB
-    subgraph 输入层
-        AVI[AVI 视频] --> FP
-        IMG[图片序列] --> FP
-    end
+### 编译命令
 
-    subgraph 采集线程
-        FP[FrameProducer] -->|frameAvailable 信号| ALGO
-    end
+在仓库根目录打开 PowerShell：
 
-    subgraph 算法线程
-        ALGO[WaferAlgorithm] -->|resultReady 信号| MW
-    end
+```powershell
+cd .\WaferMaster
 
-    subgraph 主线程
-        MW[MainWindow]
-        MW -->|显示刷新| UI[三通道视图]
-        MW -->|存储| RL[ResultLogger]
-        RL --> CSV[CSV 文件]
-        RL --> SQL[SQLite 数据库]
-        CM[CommunicationManager] -->|TCP 指令| MW
-        MW -->|状态广播| CM
-    end
+# Debug
+..\scripts\cmake-vs2022.cmd --preset vscode
+..\scripts\cmake-vs2022.cmd --build --preset vscode-debug
 
-    subgraph 远程
-        NET[NetAssist / 自定义客户端] <-->|START/STOP/STATUS| CM
-    end
+# Release
+..\scripts\cmake-vs2022.cmd --preset vscode-release
+..\scripts\cmake-vs2022.cmd --build --preset vscode-release
 ```
 
-**线程模型**：采集和算法各自运行在独立 `QThread`，通过信号槽跨线程通信，`cv::Mat` 使用 `clone()` 确保数据独立。
+输出分别在 `WaferMaster/build-vscode-wrapper-ninja/` 和 `WaferMaster/build-vscode-release/`。
 
----
+构建后会部署 Qt、OpenCV、ONNX Runtime 和模型。自行整理发布包时，应保留运行 DLL、Qt 插件和模型；AVI 解码还需将 OpenCV 的 `opencv_videoio_ffmpeg4120_64.dll` 放在 exe 旁。不要打包构建缓存或个人历史数据。
 
-## 算法流程
+## TCP 调试
 
-```
-输入帧 → 灰度化 → warpPolar 极坐标展开
-         → DFT 傅里叶变换 → shiftDFT 频谱中心化
-         → 圆环带通掩膜（滤除低频DC + 高频噪声）
-         → IDFT 逆变换 → 中心 ROI 裁切
-         → 计算 FI / p95 / HotRatio
-         → classify() 判定 Good / Warning / NG
-```
+程序默认监听 **127.0.0.1:9000**，只接受同机客户端。NetAssist 选择 **TCP Client / ASCII**，连接该地址与端口。
 
----
+协议每行一条命令，必须以实际换行结束。NetAssist 勾选“自动解析转义符”后，可分别输入下表内容；`\n` 中的 `n` 必须小写。
 
-## 通信协议
+| 发送内容 | 作用 | 响应 |
+| --- | --- | --- |
+| `START\n` | 请求开始检测 | `OK START` |
+| `STOP\n` | 请求停止检测 | `OK STOP` |
+| `STATUS\n` | 查询缓存状态和最近结果 | `STATUS state=...` |
 
-基于纯文本 TCP，每行一条指令（UTF-8），默认端口 `9000`。
+START/STOP 的 OK 只表示命令被识别，不保证检测已经启动或停止；实际结果需结合界面、日志与 STATUS 判断。STATUS 在传统模式下返回 FI/P95/HotRatio，在 DL 模式下返回 score/inference_ms，**不是主动广播**。
 
-| 指令 | 功能 | 响应 |
-|------|------|------|
-| `START` | 远程启动检测 | `OK STARTED` |
-| `STOP` | 远程停止检测 | `OK STOPPED` |
-| `STATUS` | 查询当前状态 | `STATUS Idle/Running/Stopped/Error` + 最近结果 |
+## 数据与已知限制
 
----
+- 默认记录位于 exe 目录下的 `logs/records_v2.csv`、`logs/records.db`；DL 彩色展示热力图位于 `logs/heatmaps/`，不是原始浮点异常图。
+- 旧版 `records.csv` 不覆盖；SQLite 通过补充字段保留旧记录。CSV/SQLite 双写不是跨文件原子事务，发生故障时可能不一致。
+- 采集队列满时丢弃最旧帧，不保证视频逐帧无遗漏；当前不支持工业相机实时采集。
+- 观察 ROI 只裁切显示，不改变检测计算。传统滤波图属于极坐标域，不能把左右窗口的同坐标理解为原图中的同一物理位置。
+- 历史查询仍会同步等待存储线程返回；模型加载和推理期间，停止/关闭可能需要等待当前操作结束。
 
-## 构建指南
-
-### 前置依赖
-
-1. **Visual Studio 2022**（含 MSVC v143 工具链）
-2. **Qt 6.10.2**（msvc2022_64），安装路径 `E:/Qt/6.10.2/msvc2022_64`
-3. **OpenCV 4.12.0**，安装路径 `D:/opencv/opencv/build`
-4. **CMake 3.20+**
-
-> ⚠️ 路径不同时请修改 `CMakeLists.txt` 中的 `CMAKE_PREFIX_PATH` 和 `OpenCV_DIR`。
-
-### 编译
-
-```bash
-# 配置（Release）
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-
-# 构建
-cmake --build build --config Release
-```
-
-生成的 `WaferMaster.exe` 位于 `build/Release/`。
-
-### 打包发布（免安装绿色版）
-
-```bash
-# 1. 创建发布目录 & 复制 exe
-mkdir WaferMaster_Release_v1.0
-copy build\Release\WaferMaster.exe WaferMaster_Release_v1.0\
-
-# 2. Qt 依赖脱壳
-windeployqt WaferMaster_Release_v1.0\WaferMaster.exe --release --no-translations
-
-# 3. 复制 OpenCV dll
-copy D:\opencv\opencv\build\x64\vc16\bin\opencv_world4120.dll WaferMaster_Release_v1.0\
-
-# 4. 打包
-Compress-Archive -Path WaferMaster_Release_v1.0\* -DestinationPath WaferMaster_v1.0.zip
-```
-
-目标机器需安装 [VC++ 2022 运行时](https://aka.ms/vs/17/release/vc_redist.x64.exe)。
-
----
-
-## License
-
-MIT License — 仅供学习与演示用途。
+本项目用于学习与演示，第三方库、模型与素材的使用和分发需遵守各自许可。
